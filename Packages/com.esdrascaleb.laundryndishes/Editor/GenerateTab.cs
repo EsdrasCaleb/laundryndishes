@@ -6,25 +6,25 @@ public class CustomEditorWindow : EditorWindow
 	private string textFieldValue = "Tests";
 	private bool toggleValue = false;
 
-	[MenuItem("Window/Minha Aba Personalizada")]
+	[MenuItem("Window/Laundry & Dishes")]
 	public static void ShowWindow()
 	{
-		// Abre a janela e dá um título a ela
-		GetWindow<CustomEditorWindow>("Generate Tests");
+		// Abre a janela e dï¿½ um tï¿½tulo a ela
+		GetWindow<CustomEditorWindow>("Generate Automated Tests");
 	}
 
 	private void OnGUI()
 	{
 		// Adiciona campos interativos no editor
-		GUILayout.Label("Configurações Personalizadas", EditorStyles.boldLabel);
+		GUILayout.Label("Configuraï¿½ï¿½es Personalizadas", EditorStyles.boldLabel);
 
 		// Campo de texto
 		textFieldValue = EditorGUILayout.TextField("Campo de Texto", textFieldValue);
 
 		// Toggle
-		toggleValue = EditorGUILayout.Toggle("Ativar Opção", toggleValue);
+		toggleValue = EditorGUILayout.Toggle("Ativar Opï¿½ï¿½o", toggleValue);
 
-		// Botão
+		// Botï¿½o
 		if (GUILayout.Button("Clique Aqui"))
 		{
 			Debug.Log($"Campo de texto: {textFieldValue}, Toggle: {toggleValue}");
