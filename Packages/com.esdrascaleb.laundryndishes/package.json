@@ -4,7 +4,7 @@
   "displayName": "Laundry & Dishes",
   "description": "A plugin to automate tests in unity",
   "unity": "2022.3",
-  "keywords": [ "editor" ],
+  "keywords": [ "editor","tests","llm" ],
   "type": "editor",
   "author": {
     "name": "Esdras Caleb Oliveira Silva",
