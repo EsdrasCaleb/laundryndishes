@@ -8,12 +8,21 @@ namespace Packages.LaundryNDishes
 {
     public class UnitTestGenerator
     {
+        public enum GeneratingStep
+        {
+            Initiated = 0,
+            Intention = 1,
+            Generation = 2,
+            Correcting = 3,
+            Testing = 4,
+            Finished = 5
+        }
         private readonly string classSource;
         private readonly string targetMethod;
         private string methodDescription;
         private string unityTestCode;
         private readonly LLMRequestor llmRequestor;
-        public int generatingSteps = 0;
+        public GeneratingStep generatingSteps = GeneratingStep.Initiated;
         public bool testPassed = false;
 
         public UnitTestGenerator(string filePath, string targetMethod)
@@ -25,7 +34,7 @@ namespace Packages.LaundryNDishes
 
         public void Generate()
         {
-            generatingSteps = 1;
+            generatingSteps = GeneratingStep.Intention;
             Debug.Log("Generating intention...");
             llmRequestor.MakeRequest(BuildIntention(), GetIntention);
         }
@@ -34,7 +43,7 @@ namespace Packages.LaundryNDishes
         {
             Debug.Log($"Intention received: {rawResponse}");
             methodDescription = rawResponse;
-            generatingSteps = 2;
+            generatingSteps = GeneratingStep.Generation;
 
             Debug.Log("Generating test...");
             llmRequestor.MakeRequest(BuildTest(), TestCode);
@@ -54,7 +63,7 @@ namespace Packages.LaundryNDishes
             if (!string.IsNullOrEmpty(compilationErrors))
             {
                 Debug.LogWarning("Test has compilation errors, requesting fix...");
-                generatingSteps = 3;
+                generatingSteps = GeneratingStep.Finished;
                 string fixPrompt = BuildTestFixPrompt(compilationErrors);
                 llmRequestor.MakeRequest(fixPrompt, TestCode);
                 return;
@@ -72,7 +81,7 @@ namespace Packages.LaundryNDishes
         {
             // Caminho temporário para o arquivo de teste
             string tempPath = Path.Combine(Application.dataPath, "TempTestScript.cs");
-
+            generatingSteps = GeneratingStep.Correcting;
             try
             {
                 // Salva o código temporariamente
@@ -192,7 +201,7 @@ namespace Packages.LaundryNDishes
         private void RunTest(string filePath)
         {
             string fileContent = File.ReadAllText(filePath);
-
+            generatingSteps = GeneratingStep.Testing;
             // Use regex to find the class name
             string className = CodeParser.ExtractClassName(fileContent);
             
@@ -231,12 +240,14 @@ namespace Packages.LaundryNDishes
                 if (!result.HasChildren && result.ResultState != "Passed")
                 {
                     Debug.Log(string.Format("Test {0} {1}", result.Test.Name, result.ResultState));
+                    generator.testPassed = false;
                 }
                 else
                 {
                     Debug.Log("Test passed!");
                     generator.testPassed = true;
                 }
+                generator.generatingSteps = GeneratingStep.Finished;
             }
         }
 
