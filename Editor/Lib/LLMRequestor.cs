@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -70,24 +71,26 @@ namespace Packages.LaundryNDishes
         {
             try
             {
-                // Prepare the request body in the format expected by OpenAI
-                var requestBody = new
-                {
-                    model = _config.llmModel, // Use the model from the config
-                    prompt = prompt,
-                    temperature = Math.Round(_config.llTemperature,2), // Use the temperature from the config
-                    max_tokens = _config.llMaxTokens // Use max tokens from the config
-                };
+                string jsonRequestBody = $@"
+                {{
+                    ""model"": ""{_config.llmModel}"",
+                    ""messages"": [
+                        {{ ""role"": ""user"", ""content"": ""{prompt}"" }}
+                    ],
+                    ""temperature"": {_config.llTemperature.ToString("0.00", CultureInfo.InvariantCulture)},
+                    ""max_tokens"": {_config.llMaxTokens}
+                }}";
 
-                var jsonRequestBody = JsonUtility.ToJson(requestBody);
+
 
                 // Prepare the content for the HTTP request
                 var content = new StringContent(jsonRequestBody, Encoding.UTF8, "application/json");
-
+                
+                
                 // Set up the request headers (including the Bearer token)
                 _httpClient.DefaultRequestHeaders.Clear();
                 _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + _config.llmApiKey);
-
+                
                 // Send the POST request to the LLM server (this could be OpenAI or your local server)
                 HttpResponseMessage response = await _httpClient.PostAsync(_config.llmServer, content);
 
