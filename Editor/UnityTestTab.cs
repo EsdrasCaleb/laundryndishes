@@ -3,7 +3,7 @@ using UnityEngine;
 using System.IO;
 using System.Linq;
 
-namespace Packages.LaundryNDishes.Editor
+namespace Packages.LaundryNDishes
 {
     public class UnityTestTab : EditorWindow
     {

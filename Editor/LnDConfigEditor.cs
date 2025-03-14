@@ -1,7 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace Packages.LaundryNDishes.Editor
+namespace Packages.LaundryNDishes
 {
     public class LnDConfigSettings : SettingsProvider
     {
