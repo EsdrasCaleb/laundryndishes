@@ -36,8 +36,6 @@ namespace LaundryNDishes.Data
             Load();
         }
 
-        // --- Propriedades em Memória ---
-
         public LLMProviderType ProviderType { get; set; }
         public string LlmServerUrl { get; set; }
         public string LlmApiKey { get; set; }
@@ -48,8 +46,8 @@ namespace LaundryNDishes.Data
         public string TokenizerPath { get; set; }
         public float Temperature { get; set; }
         public int MaxTokens { get; set; }
-        public string TestDestinationFolder { get; set; }
-        public string TestableScriptsFolder { get; set; }
+        public string PlayTestDestinationFolder { get; set; }
+        public string EditorTestScriptsFolder { get; set; }
         public string CustomTemplatesFolder { get; set; }
         public TestDatabase ActiveDatabase { get; private set; }
         
@@ -76,8 +74,8 @@ namespace LaundryNDishes.Data
             TokenizerPath = EditorPrefs.GetString(KeyPrefix + "TokenizerPath", "Assets/Models/tokenizer.json");
             Temperature = EditorPrefs.GetFloat(KeyPrefix + "Temperature", 0.7f);
             MaxTokens = EditorPrefs.GetInt(KeyPrefix + "MaxTokens", 2048);
-            TestDestinationFolder = EditorPrefs.GetString(KeyPrefix + "TestDestinationFolder", "Assets/Tests/Generated");
-            TestableScriptsFolder = EditorPrefs.GetString(KeyPrefix + "TestableScriptsFolder", "Assets/Scripts");
+            PlayTestDestinationFolder = EditorPrefs.GetString(KeyPrefix + "TestDestinationFolder", "Assets/Tests/Generated");
+            EditorTestScriptsFolder = EditorPrefs.GetString(KeyPrefix + "TestableScriptsFolder", "Assets/Scripts");
             CustomTemplatesFolder = EditorPrefs.GetString(KeyPrefix + "TemplateFolder", string.Empty);
             
             string dbPath = EditorPrefs.GetString(ActiveDatabasePathKey, string.Empty);
@@ -102,8 +100,8 @@ namespace LaundryNDishes.Data
             EditorPrefs.SetString(KeyPrefix + "TokenizerPath", TokenizerPath);
             EditorPrefs.SetFloat(KeyPrefix + "Temperature", Temperature);
             EditorPrefs.SetInt(KeyPrefix + "MaxTokens", MaxTokens);
-            EditorPrefs.SetString(KeyPrefix + "TestDestinationFolder", TestDestinationFolder);
-            EditorPrefs.SetString(KeyPrefix + "TestableScriptsFolder", TestableScriptsFolder);
+            EditorPrefs.SetString(KeyPrefix + "TestDestinationFolder", PlayTestDestinationFolder);
+            EditorPrefs.SetString(KeyPrefix + "TestableScriptsFolder", EditorTestScriptsFolder);
             EditorPrefs.SetString(KeyPrefix + "CustomTemplatesFolder", CustomTemplatesFolder);
 
             string path = (ActiveDatabase != null) ? AssetDatabase.GetAssetPath(ActiveDatabase) : string.Empty;

@@ -29,7 +29,7 @@ namespace LaundryNDishes.Core
             {
                 var filter = new Filter
                 {
-                    testMode = TestMode.EditMode,
+                    testMode = TestMode.PlayMode,
                     assemblyNames = new[] { assemblyName },
                     testNames = new[] { className }
                 };

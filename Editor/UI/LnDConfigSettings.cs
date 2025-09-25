@@ -91,8 +91,8 @@ namespace LaundryNDishes.UI
             
             EditorGUILayout.Space(20);
             EditorGUILayout.LabelField("Project Path Settings", EditorStyles.boldLabel);
-            config.TestDestinationFolder = EditorGUILayout.TextField("Test Destination Folder", config.TestDestinationFolder);
-            config.TestableScriptsFolder = EditorGUILayout.TextField("Testable Scripts Folder", config.TestableScriptsFolder);
+            config.PlayTestDestinationFolder = EditorGUILayout.TextField("Playmode Test Destination Folder", config.PlayTestDestinationFolder);
+            //config.EditorTestScriptsFolder = EditorGUILayout.TextField("Editor Test Destination Folder", config.EditorTestScriptsFolder);
             EditorGUILayout.LabelField(new GUIContent("Custom Templates Folder (Optional)", "Deixe em branco para usar os templates padrão do plugin."));
             config.CustomTemplatesFolder = EditorGUILayout.TextField(" ", config.CustomTemplatesFolder);
             // Se qualquer valor na UI mudou, o EndChangeCheck será true.

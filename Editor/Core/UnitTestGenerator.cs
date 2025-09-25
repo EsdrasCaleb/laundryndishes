@@ -211,7 +211,7 @@ namespace LaundryNDishes.Core
             string fileName = $"{className}.cs";
     
             // Garante que a pasta de destino exista. Esta parte do seu código já estava correta.
-            string destinationFolder = _config.TestDestinationFolder;
+            string destinationFolder = _config.PlayTestDestinationFolder;
             Directory.CreateDirectory(destinationFolder);
     
             string desiredPath = Path.Combine(destinationFolder, fileName).Replace("\\", "/");
