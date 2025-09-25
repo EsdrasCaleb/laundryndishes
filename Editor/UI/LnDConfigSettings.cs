@@ -1,13 +1,13 @@
 using UnityEditor;
 using UnityEngine;
 using LaundryNDishes.Data;
-using LaundryNDishes.Services; // Namespace da Factory
+using LaundryNDishes.Services;
+using LaundryNDishes.Core;
 
 namespace LaundryNDishes.UI
 {
     class LnDConfigSettings : SettingsProvider
     {
-        private LnDConfig _config;
         private static string _connectionTestResult = "Waiting for test...";
         private static bool _isTestingConnection = false;
 
@@ -16,85 +16,91 @@ namespace LaundryNDishes.UI
         [SettingsProvider]
         public static SettingsProvider CreateSettingsProvider()
         {
-            var provider = new LnDConfigSettings("Project/Laundry & Dishes", SettingsScope.Project) {
-                keywords = new System.Collections.Generic.HashSet<string>(new[] { "LLM", "AI", "Test" })
-            };
+            var provider = new LnDConfigSettings("Project/Laundry & Dishes", SettingsScope.Project);
+            provider.keywords = new System.Collections.Generic.HashSet<string>(new[] { "LLM", "AI", "Test" });
             return provider;
-        }
-
-        public override void OnActivate(string searchContext, UnityEngine.UIElements.VisualElement rootElement)
-        {
-            _config = LnDConfig.Load(); // Carrega a config ao abrir a janela.
         }
 
         public override void OnGUI(string searchContext)
         {
-            if (_config == null) _config = LnDConfig.Load();
+            // Pega a instância única da configuração. A mágica do singleton acontece aqui.
+            var config = LnDConfig.Instance;
 
-            EditorGUI.BeginChangeCheck();
+            EditorGUI.BeginChangeCheck(); // Inicia a detecção de mudanças na UI.
 
-            _config.ProviderType = (LLMProviderType)EditorGUILayout.EnumPopup("Connection Type", _config.ProviderType);
-            EditorGUILayout.Space(10);
-
-            if (_config.ProviderType == LLMProviderType.OpenAIRestServer)
+            // --- SELEÇÃO DO BANCO DE DADOS ATIVO ---
+            EditorGUILayout.LabelField("Database Settings", EditorStyles.boldLabel);
+            var newDatabase = EditorGUILayout.ObjectField("Active Test Database", config.ActiveDatabase, typeof(TestDatabase), false) as TestDatabase;
+            if (newDatabase != config.ActiveDatabase)
             {
-                DrawServerSettings();
+                config.SetActiveDatabase(newDatabase);
             }
-            else // LlamaCppDirect
+            
+            if (config.ActiveDatabase == null)
             {
-                DrawDirectSettings();
+                 EditorGUILayout.HelpBox("Nenhum banco de dados selecionado.", MessageType.Warning);
+                 if (GUILayout.Button("Create New Database"))
+                 {
+                     Bootstrap.CreateNewDatabase();
+                 }
             }
 
-            DrawGenerationSettings();
-            DrawPathSettings();
+            // --- CONFIGURAÇÕES DO LLM ---
+            EditorGUILayout.Space(20);
+            EditorGUILayout.LabelField("LLM Settings (Local to this Machine)", EditorStyles.boldLabel);
+            config.ProviderType = (LLMProviderType)EditorGUILayout.EnumPopup("Connection Type", config.ProviderType);
 
-            if (EditorGUI.EndChangeCheck())
+            // UI Condicional
+            switch (config.ProviderType)
             {
-                _config.Save(); // A UI apenas diz para a config se salvar.
+                case LLMProviderType.OpenAIRestServer:
+                    config.LlmServerUrl = EditorGUILayout.TextField("Server URL", config.LlmServerUrl);
+                    config.LlmModel = EditorGUILayout.TextField("Model Name", config.LlmModel);
+                    config.LlmApiKey = EditorGUILayout.PasswordField("API Key", config.LlmApiKey);
+                    // Adicione aqui os outros campos que desejar para este modo
+                    break;
+                
+                case LLMProviderType.UnitySentis:
+                    config.OnnxModelPath = EditorGUILayout.TextField("ONNX Model Path", config.OnnxModelPath);
+                    config.TokenizerPath = EditorGUILayout.TextField("Tokenizer Path", config.TokenizerPath);
+                    break;
+
+                case LLMProviderType.LlamaCppDirect:
+                    EditorGUILayout.HelpBox("Direct Llama.cpp connection is not yet implemented.", MessageType.Info);
+                    GUI.enabled = false;
+                    config.LlamaCppPath = EditorGUILayout.TextField("Llama.cpp Executable Path", config.LlamaCppPath);
+                    config.GgufModelFile = EditorGUILayout.TextField("GGUF Model File Path", config.GgufModelFile);
+                    GUI.enabled = true;
+                    break;
             }
-        }
-
-        private void DrawServerSettings()
-        {
-            EditorGUILayout.LabelField("OpenAI REST Server Settings", EditorStyles.boldLabel);
-            _config.LlmServerUrl = EditorGUILayout.TextField("Server URL", _config.LlmServerUrl);
-            _config.LlmModel = EditorGUILayout.TextField("Model Name", _config.LlmModel);
-            _config.LlmApiKey = EditorGUILayout.PasswordField("API Key", _config.LlmApiKey);
-
-            EditorGUILayout.Space(5);
-            GUI.enabled = !_isTestingConnection;
-            if (GUILayout.Button("Test Connection"))
+            
+            // Botão de teste para o modo Servidor
+            if (config.ProviderType == LLMProviderType.OpenAIRestServer)
             {
-                TestConnection();
+                GUI.enabled = !_isTestingConnection;
+                if (GUILayout.Button("Test Connection")) { TestConnection(); }
+                GUI.enabled = true;
+                EditorGUILayout.HelpBox(_connectionTestResult, MessageType.None);
             }
-            GUI.enabled = true;
-            EditorGUILayout.HelpBox(_connectionTestResult, MessageType.None);
-        }
-        
-        private void DrawDirectSettings()
-        {
-            EditorGUILayout.LabelField("Direct Llama.cpp Settings", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Direct connection is not yet implemented.", MessageType.Info);
-            GUI.enabled = false;
-            _config.LlamaCppPath = EditorGUILayout.TextField("Llama.cpp Executable Path", _config.LlamaCppPath);
-            _config.GgufModelFile = EditorGUILayout.TextField("GGUF Model File Path", _config.GgufModelFile);
-            GUI.enabled = true;
-        }
 
-        private void DrawGenerationSettings()
-        {
+            // --- CONFIGURAÇÕES GERAIS ---
             EditorGUILayout.Space(20);
             EditorGUILayout.LabelField("Generation Settings", EditorStyles.boldLabel);
-            _config.Temperature = EditorGUILayout.Slider("Temperature", _config.Temperature, 0f, 2f);
-            _config.MaxTokens = EditorGUILayout.IntField("Max Tokens", _config.MaxTokens);
-        }
-
-        private void DrawPathSettings()
-        {
+            config.Temperature = EditorGUILayout.Slider("Temperature", config.Temperature, 0f, 2f);
+            config.MaxTokens = EditorGUILayout.IntField("Max Tokens", config.MaxTokens);
+            
             EditorGUILayout.Space(20);
             EditorGUILayout.LabelField("Project Path Settings", EditorStyles.boldLabel);
-            _config.TestDestinationFolder = EditorGUILayout.TextField("Test Destination Folder", _config.TestDestinationFolder);
-            _config.TestableScriptsFolder = EditorGUILayout.TextField("Testable Scripts Folder", _config.TestableScriptsFolder);
+            config.TestDestinationFolder = EditorGUILayout.TextField("Test Destination Folder", config.TestDestinationFolder);
+            config.TestableScriptsFolder = EditorGUILayout.TextField("Testable Scripts Folder", config.TestableScriptsFolder);
+            EditorGUILayout.LabelField(new GUIContent("Custom Templates Folder (Optional)", "Deixe em branco para usar os templates padrão do plugin."));
+            config.CustomTemplatesFolder = EditorGUILayout.TextField(" ", config.CustomTemplatesFolder);
+            // Se qualquer valor na UI mudou, o EndChangeCheck será true.
+            if (EditorGUI.EndChangeCheck())
+            {
+                // A UI simplesmente pede para a instância da config se salvar.
+                config.Save();
+            }
         }
         
         private async void TestConnection()
@@ -103,14 +109,19 @@ namespace LaundryNDishes.UI
             _connectionTestResult = "Testing...";
             try
             {
-                // A Factory agora sabe qual serviço usar, não precisamos dizer a ela!
-                ILLMService llmService = LLMServiceFactory.GetCurrentService();
+                var config = LnDConfig.Instance;
+                var llmService = LLMServiceFactory.GetCurrentService();
+                
+                var prompt = new Prompt();
+                prompt.Messages.Add(new ChatMessage { role = "user", content = "Say 'hello' in one word." });
+                
                 var requestData = new LLMRequestData {
-                    Prompt = "Say 'hello' in one word.",
-                    Config = _config // Passa a config atual (com os dados da UI) para o request.
+                    GeneratedPrompt = prompt,
+                    Config = config
                 };
+                
                 LLMResponse response = await llmService.GetResponseAsync(requestData);
-                _connectionTestResult = response.Success ? $"OK - Success! Response: '{response.Content.Trim()}'" : $"Failed. Error: {response.ErrorMessage}";
+                _connectionTestResult = response.Success ? $"OK - Success! Response: '{response.Content}'" : $"Failed. Error: {response.ErrorMessage}";
             }
             catch (System.Exception ex) { _connectionTestResult = $"Failed. Exception: {ex.Message}"; }
             finally { _isTestingConnection = false; }

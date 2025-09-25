@@ -1,11 +1,12 @@
 using System.Threading.Tasks;
+using LaundryNDishes.Data;
 
 namespace LaundryNDishes
 {
 // Um objeto para passar os parâmetros da requisição de forma estruturada.
     public class LLMRequestData
     {
-        public string Prompt;
+        public Prompt GeneratedPrompt; 
         public Data.LnDConfig Config; // Passa toda a configuração necessária.
     }
 

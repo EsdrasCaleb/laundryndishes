@@ -1,0 +1,23 @@
+The previously generated C# code for a Unity Test Framework (UTF) failed to compile.
+
+CODE WITH ERRORS:
+```csharp
+{{ code }}
+```
+COMPILATION ERRORS REPORTED:
+
+{{ errors }}
+
+Your task is to analyze the errors and fix the code so that it compiles successfully.
+
+RULES:
+
+Fix ONLY syntax and compilation errors.
+
+DO NOT change the main logic or assertions of the test unless strictly necessary to fix an error.
+
+Maintain the original intent of the test.
+
+The response should contain ONLY the complete and corrected C# code, within a "```csharp```". block. 
+
+Do not include explanations of the fixes.

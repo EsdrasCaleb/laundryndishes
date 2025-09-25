@@ -1,16 +1,14 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
-using System.Linq; 
 using UnityEditor;
-using UnityEditor.Compilation;
-using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
+using LaundryNDishes.Services;
+using LaundryNDishes.Data;
 using UnityEditor.Compilation;
-using LaundryNDishes.Services; 
-using LaundryNDishes.Data;  
 
-namespace LaundryNDishes.Core // Colocando a lógica principal em um namespace Core
+namespace LaundryNDishes.Core
 {
     public class UnitTestGenerator
     {
@@ -21,6 +19,7 @@ namespace LaundryNDishes.Core // Colocando a lógica principal em um namespace C
             GeneratingCode,
             CorrectingCode,
             RunningTests,
+            UpdatingDatabase,
             Finished
         }
 
@@ -28,79 +27,96 @@ namespace LaundryNDishes.Core // Colocando a lógica principal em um namespace C
         public bool? TestPassed { get; private set; } = null;
         public string GeneratedTestCode { get; private set; }
 
+        private readonly MonoScript _targetScript;
         private readonly string _classSource;
         private readonly string _targetMethod;
         private readonly ILLMService _llmService;
         private readonly LnDConfig _config;
+        private readonly PromptBuilder _promptBuilder;
 
-        // O construtor agora recebe a dependência do serviço LLM, em vez de criá-la.
-        public UnitTestGenerator(string filePath, string targetMethod, ILLMService llmService, LnDConfig config)
+        public UnitTestGenerator(MonoScript targetScript, string targetMethod, ILLMService llmService, LnDConfig config)
         {
+            _targetScript = targetScript;
+            string filePath = AssetDatabase.GetAssetPath(targetScript);
             _classSource = File.ReadAllText(filePath);
+            
             _targetMethod = targetMethod;
             _llmService = llmService;
             _config = config;
+            _promptBuilder = new PromptBuilder(); // Instancia o builder.
         }
 
-        // O método principal agora é assíncrono e retorna uma Task.
-         public async Task Generate()
+        /// <summary>
+        /// Orquestra o processo completo de geração, compilação e execução de testes.
+        /// </summary>
+        public async Task Generate()
         {
             string tempTestPath = null;
             try
             {
-                // ETAPA 1: Obter a intenção do método a ser testado.
+                // ETAPA 1: Obter a intenção do método.
                 CurrentStep = GeneratingStep.GettingIntention;
                 Debug.Log("1. Gerando intenção do método...");
-                var intentionRequest = new LLMRequestData { Config = _config, Prompt = BuildIntentionPrompt() };
+                Prompt intentionPrompt = _promptBuilder.BuildIntentionPrompt(_classSource, null, _targetMethod);
+                var intentionRequest = new LLMRequestData { GeneratedPrompt = intentionPrompt, Config = _config };
                 var intentionResponse = await _llmService.GetResponseAsync(intentionRequest);
                 if (!intentionResponse.Success) throw new Exception("Falha ao obter a intenção: " + intentionResponse.ErrorMessage);
                 var methodDescription = intentionResponse.Content;
                 Debug.Log($"Intenção recebida: {methodDescription}");
 
-                // ETAPA 2: Gerar e corrigir o código do teste em um loop.
+                // ETAPA 2: Loop de Geração e Correção de Código.
                 string lastGeneratedCode = "";
-                const int maxCorrectionAttempts = 3;
-                for (int i = 0; i < maxCorrectionAttempts; i++)
+                for (int i = 0; i < 3; i++) // Tenta até 3 vezes.
                 {
                     CurrentStep = (i == 0) ? GeneratingStep.GeneratingCode : GeneratingStep.CorrectingCode;
                     Debug.Log($"{(i == 0 ? "2." : "2." + (i + 1) + ".")} Gerando/Corrigindo código de teste (tentativa {i + 1})...");
-                    var testRequest = new LLMRequestData { Config = _config, Prompt = BuildTestPrompt(methodDescription, lastGeneratedCode) };
+                    Prompt testPrompt = _promptBuilder.BuildGeneratorPrompt(methodDescription, _classSource, null, _targetMethod);
+                    var testRequest = new LLMRequestData { GeneratedPrompt = testPrompt, Config = _config };
                     var testResponse = await _llmService.GetResponseAsync(testRequest);
                     if (!testResponse.Success) throw new Exception("Falha ao gerar o código: " + testResponse.ErrorMessage);
-                    
                     lastGeneratedCode = CodeParser.ExtractTestCode(testResponse.Content);
 
-                    Debug.Log("3. Verificando erros de compilação...");
-                    var compilationErrors = await CheckCompilationErrorsAsync(lastGeneratedCode);
+                    var checker = new CompilationChecker();
+                    await checker.Run(lastGeneratedCode);
 
-                    if (string.IsNullOrEmpty(compilationErrors))
+                    if (!checker.HasErrors)
                     {
                         GeneratedTestCode = lastGeneratedCode;
+                        tempTestPath = checker.TempFilePath;
                         Debug.Log("Código compilou com sucesso!");
-                        break; // Sucesso! Sai do loop de correção.
+                        break; // Sucesso, sai do loop.
                     }
                     
-                    Debug.LogWarning($"Erros de compilação encontrados:\n{compilationErrors}");
-                    methodDescription = $"O código anterior teve os seguintes erros: {compilationErrors}. Por favor, corrija-os e forneça apenas o código completo.";
+                    string structuredErrors = string.Join("\n", checker.CompilationErrors.Select(e => e.ToString()));
+                    Debug.LogWarning($"Erros de compilação encontrados:\n{structuredErrors}");
+                    methodDescription = $"O código anterior teve os seguintes erros: {structuredErrors}. Por favor, corrija-os.";
                 }
 
                 if (string.IsNullOrEmpty(GeneratedTestCode))
                 {
-                    throw new Exception("Não foi possível gerar um código de teste que compilasse após várias tentativas.");
+                    throw new Exception("Não foi possível gerar um código de teste que compilasse.");
                 }
 
-                // ETAPA 3: Executar o teste compilado.
+                // ETAPA 3: Executar o teste.
                 CurrentStep = GeneratingStep.RunningTests;
-                Debug.Log("4. Executando os testes...");
-                (bool? testResult, string generatedPath) = await RunTestsAsync(GeneratedTestCode);
-                tempTestPath = generatedPath; // Armazena o caminho para limpeza no 'finally'.
-                TestPassed = testResult;
+                Debug.Log("3. Executando os testes...");
+                var executor = new TestExecutor();
+                string className = CodeParser.ExtractClassName(GeneratedTestCode);
+                string assemblyName = CompilationPipeline.GetAssemblyNameFromScriptPath(tempTestPath);
+                await executor.Run(assemblyName, className);
+                TestPassed = executor.TestPassed;
 
-                // ETAPA 4: Salvar o arquivo final se o teste passou.
+                // ETAPA 4: Atualizar o Banco de Dados.
+                CurrentStep = GeneratingStep.UpdatingDatabase;
+                Debug.Log("4. Atualizando o banco de dados...");
+                CurrentStep = GeneratingStep.UpdatingDatabase;
+                Debug.Log("4. Atualizando o banco de dados...");
+                UpdateTestDatabase(); // O método agora usa os resultados armazenados na classe.
+
+
                 if (TestPassed.HasValue && TestPassed.Value)
                 {
-                    Debug.Log("5. Teste passou! Salvando arquivo final...");
-                    SaveFinalTestFile(GeneratedTestCode);
+                    Debug.Log("5. Teste passou! Processo finalizado com sucesso.");
                 }
                 else
                 {
@@ -109,201 +125,116 @@ namespace LaundryNDishes.Core // Colocando a lógica principal em um namespace C
             }
             catch (Exception ex)
             {
-                Debug.LogError("Ocorreu um erro durante a geração: " + ex.Message);
-                // Opcional: re-lançar a exceção se a UI precisar saber que algo deu errado.
-                // throw; 
+                Debug.LogError($"Ocorreu um erro fatal durante a geração: {ex.Message}");
+                TestPassed = false;
+                UpdateTestDatabase(); // Tenta salvar o resultado de falha mesmo assim.
             }
             finally
             {
-                // ETAPA 5: Limpeza garantida do arquivo temporário.
+                // ETAPA FINAL: Limpeza do arquivo temporário.
                 CurrentStep = GeneratingStep.Finished;
-                if (!string.IsNullOrEmpty(tempTestPath))
+                if (!string.IsNullOrEmpty(tempTestPath) && File.Exists(tempTestPath))
                 {
                     AssetDatabase.DeleteAsset(tempTestPath);
                     Debug.Log("Arquivo de teste temporário deletado.");
                 }
             }
         }
-
-        // --- Métodos de Construção de Prompt ---
-
-        private string BuildIntentionPrompt()
-        {
-            return $"Analise o seguinte código C# da Unity:\n```csharp\n{_classSource}\n```\nDescreva o propósito e a funcionalidade principal do método chamado '{_targetMethod}' em uma frase concisa e técnica.";
-        }
-
-        private string BuildTestPrompt(string description, string previousFaultyCode)
-        {
-            string prompt = $"Baseado no seguinte código C# da Unity:\n```csharp\n{_classSource}\n```\n";
-            prompt += $"Gere um teste unitário completo usando o 'Unity Test Framework' (com NUnit) para o método '{_targetMethod}'. ";
-            prompt += $"O teste deve garantir que o método {description}. ";
-
-            if (!string.IsNullOrEmpty(previousFaultyCode))
-            {
-                prompt += $"A tentativa anterior de código foi:\n```csharp\n{previousFaultyCode}\n```\n";
-            }
-            
-            prompt += "Forneça apenas o código C# completo, dentro de um bloco ```csharp ... ```, sem nenhuma explicação adicional.";
-            return prompt;
-        }
-
-        // --- Métodos de Execução e Verificação (Agora Assíncronos) ---
         
-        private async Task<(bool? testPassed, string tempFilePath)> RunTestsAsync(string testCode)
-        {
-            string tempFilePath = null;
-            try
-            {
-                // 1. Salva o arquivo de teste temporário.
-                tempFilePath = SaveTemporaryTestFile(testCode);
-                AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
-
-                // 2. Espera a compilação de forma robusta.
-                bool compiledInTime = await WaitForCompilation();
-                if (!compiledInTime) return (false, tempFilePath); // Retorna falha se houve timeout.
-
-                string className = CodeParser.ExtractClassName(testCode);
-                if (string.IsNullOrEmpty(className)) throw new Exception("Não foi possível extrair o nome da classe do teste.");
-
-                string assemblyName = CompilationPipeline.GetAssemblyNameFromScriptPath(tempFilePath);
-                if (string.IsNullOrEmpty(assemblyName)) throw new Exception("Não foi possível determinar o Assembly para o teste.");
-
-                // 3. Cria o Filtro específico.
-                var filter = new Filter()
-                {
-                    testMode = TestMode.EditMode,
-                    assemblyNames = new[] { assemblyName },
-                    testNames = new[] { className }
-                };
-
-                // 4. Executa a API com o filtro.
-                var testCallbacks = new TestResultCallback();
-                var api = ScriptableObject.CreateInstance<TestRunnerApi>();
-                api.RegisterCallbacks(testCallbacks);
-                api.Execute(new ExecutionSettings(filter));
-
-                // 5. Espera o resultado e o retorna junto com o caminho do arquivo.
-                bool result = await testCallbacks.CompletionSource.Task;
-                return (result, tempFilePath);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogException(ex);
-                // Retorna falha e o caminho do arquivo para que ele possa ser limpo.
-                return (false, tempFilePath);
-            }
-        }
-        
-
-        private class TestResultCallback : ICallbacks
-        {
-            // 3. AQUI ESTÁ O TRADUTOR: Criamos uma Task que podemos controlar.
-            public readonly TaskCompletionSource<bool> CompletionSource = new TaskCompletionSource<bool>();
-    
-            // 4. Quando a Unity chama este método de callback (exatamente como no seu exemplo)...
-            public void RunFinished(ITestResultAdaptor result)
-            {
-                bool success = result.PassCount > 0 && result.FailCount == 0;
-        
-                // ...nós manualmente completamos a nossa Task com o resultado.
-                // Isso "desbloqueia" o 'await' no método RunTestsAsync.
-                CompletionSource.TrySetResult(success);
-            }
-
-            // Outros métodos da interface que não precisamos usar para esta lógica.
-            public void RunStarted(ITestAdaptor testsToRun) { }
-            public void TestStarted(ITestAdaptor test) { }
-            public void TestFinished(ITestResultAdaptor result) { }
-        }
-
-        // A implementação do ICallbacks usando TaskCompletionSource.
-        private class TestResultCallback : ICallbacks
-        {
-            public readonly TaskCompletionSource<bool> CompletionSource = new TaskCompletionSource<bool>();
-            
-            public void RunFinished(ITestResultAdaptor result)
-            {
-                // Se ao menos um teste passou e nenhum falhou, consideramos sucesso.
-                bool success = result.PassCount > 0 && result.FailCount == 0 && result.InconclusiveCount == 0;
-                CompletionSource.TrySetResult(success);
-            }
-
-            public void RunStarted(ITestAdaptor testsToRun) { }
-            public void TestStarted(ITestAdaptor test) { }
-            public void TestFinished(ITestResultAdaptor result) { }
-        }
-        
-        // --- Métodos Auxiliares ---
-        private void SaveFinalTestFile(string code)
-        {
-            string className = CodeParser.ExtractClassName(code) ?? _targetMethod.Replace("()", "");
-            string fileName = $"{className}.cs"; // Sem o prefixo "Temp_"
-            string path = Path.Combine(_config.TestDestinationFolder, fileName);
-            
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            File.WriteAllText(path, code);
-            AssetDatabase.Refresh();
-            Debug.Log($"Arquivo de teste final salvo em: {path}");
-        }
-        
-        // Dentro da sua classe UnitTestGenerator
-
         /// <summary>
-        /// Salva o código de teste em um arquivo temporário no local especificado pela configuração.
+        /// Salva o arquivo de teste gerado e atualiza a entrada correspondente no banco de dados.
+        /// A busca pela entrada agora é feita usando o MonoScript do arquivo de teste gerado.
         /// </summary>
-        /// <returns>O caminho relativo do arquivo salvo (ex: "Assets/Tests/Temp_MyTest.cs").</returns>
-        private string SaveTemporaryTestFile(string code)
+        private void UpdateTestDatabase()
         {
-            var config = LnDConfig.Load();
-            string className = CodeParser.ExtractClassName(code) ?? _targetMethod.Replace("()", "");
-    
-            // Adiciona o prefixo Temp_ ao nome do arquivo.
-            string fileName = $"Temp_{className}.cs";
-    
-            // Garante que o diretório de destino exista.
-            Directory.CreateDirectory(config.TestDestinationFolder);
+            var db = TestDatabase.Instance;
+            if (db == null)
+            {
+                Debug.LogError("Não foi possível encontrar o TestDatabase para salvar o resultado.");
+                return;
+            }
 
-            string absolutePath = Path.Combine(config.TestDestinationFolder, fileName);
-            File.WriteAllText(absolutePath, code);
+            // Se por algum motivo não houver código gerado, não há o que fazer.
+            if (string.IsNullOrEmpty(GeneratedTestCode))
+            {
+                Debug.LogWarning("Nenhum código foi gerado, a atualização do banco de dados foi pulada.");
+                return;
+            }
 
-            Debug.Log($"Arquivo de teste temporário salvo em: {absolutePath}");
-    
-            // Converte o caminho absoluto para um caminho relativo que a AssetDatabase entende.
-            return GetProjectRelativePath(absolutePath);
-        }
+            // --- ETAPA 1: Salvar o arquivo de teste e obter sua referência (MonoScript) ---
+            // Esta etapa agora acontece PRIMEIRO, pois precisamos da referência para a busca.
+            string finalPath = SaveFinalTestFile(GeneratedTestCode);
+            var generatedTestMonoScript = AssetDatabase.LoadAssetAtPath<MonoScript>(finalPath);
 
-        // Helper para converter um caminho absoluto em um caminho relativo ao projeto.
-        private string GetProjectRelativePath(string absolutePath)
-        {
-            return "Assets" + absolutePath.Replace("\\", "/").Substring(Application.dataPath.Length);
+            if (generatedTestMonoScript == null)
+            {
+                Debug.LogError($"Falha ao carregar o MonoScript do arquivo de teste salvo em '{finalPath}'. A atualização do banco de dados foi abortada.");
+                return;
+            }
+
+            // --- ETAPA 2: Procurar a entrada no DB usando a referência do arquivo gerado ---
+            var testEntry = db.AllTests.FirstOrDefault(t => t.GeneratedTestScript == generatedTestMonoScript);
+
+            // Se a entrada não existir para este arquivo de teste específico, cria uma nova.
+            if (testEntry == null)
+            {
+                // Usamos o construtor simples e preenchemos os campos.
+                testEntry = new GeneratedTestData(_targetScript, _targetMethod);
+                testEntry.GeneratedTestScript = generatedTestMonoScript; // Define a "chave" da busca.
+                db.AllTests.Add(testEntry);
+            }
+
+            // --- ETAPA 3: Atualizar o estado da entrada (seja ela nova ou existente) ---
+            testEntry.passedInLastExecution = TestPassed.HasValue && TestPassed.Value;
+            testEntry.LastEditTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            
+            // Garante que o TargetScript e SutMethod estão corretos (útil se a entrada foi criada agora).
+            testEntry.TargetScript = _targetScript;
+            testEntry.SutMethod = _targetMethod;
+
+            // --- ETAPA 4: Salvar as alterações no banco de dados ---
+            Debug.Log($"Atualizando entrada no banco de dados para o teste '{generatedTestMonoScript.name}'. Resultado: {(testEntry.passedInLastExecution ? "Passou" : "Falhou")}");
+            EditorUtility.SetDirty(db);
+            AssetDatabase.SaveAssets();
         }
 
         /// <summary>
-        /// Espera a Unity terminar de compilar quaisquer scripts pendentes.
+        /// Salva o código do teste em um arquivo, garantindo que a pasta de destino exista
+        /// e que nenhum arquivo existente seja sobrescrito.
         /// </summary>
-        /// <param name="timeoutInSeconds">Tempo máximo de espera em segundos.</param>
-        /// <returns>Retorna true se a compilação terminou a tempo, false caso contrário.</returns>
-        private async Task<bool> WaitForCompilation(int timeoutInSeconds = 15)
+        /// <param name="code">O código-fonte do teste a ser salvo.</param>
+        /// <returns>O caminho relativo do arquivo que foi efetivamente salvo.</returns>
+        private string SaveFinalTestFile(string code)
         {
-            var startTime = Time.realtimeSinceStartup;
-            Debug.Log("Aguardando compilação da Unity...");
-
-            // Loop de espera ativa (polling)
-            while (EditorApplication.isCompiling)
-            {
-                // Verifica se o tempo de espera foi excedido.
-                if (Time.realtimeSinceStartup - startTime > timeoutInSeconds)
-                {
-                    Debug.LogError("Timeout! A compilação demorou mais de 15 segundos. Abortando.");
-                    return false;
-                }
-                // Espera um curto período antes de verificar novamente.
-                await Task.Delay(100); 
-            }
+            // 1. Determina o nome e o caminho desejado para o arquivo.
+            string className = CodeParser.ExtractClassName(code) ?? _targetMethod.Replace("()", "");
+            string fileName = $"{className}.cs";
     
-            Debug.Log("Compilação finalizada.");
-            return true;
+            // Garante que a pasta de destino exista. Esta parte do seu código já estava correta.
+            string destinationFolder = _config.TestDestinationFolder;
+            Directory.CreateDirectory(destinationFolder);
+    
+            string desiredPath = Path.Combine(destinationFolder, fileName).Replace("\\", "/");
+
+            // 2. A MÁGICA: Pede à Unity para gerar um caminho único.
+            // Se 'desiredPath' já existir, a Unity retornará "Assets/Tests/MyTest 1.cs", etc.
+            // Se não existir, ela retornará o próprio 'desiredPath'.
+            string uniquePath = AssetDatabase.GenerateUniqueAssetPath(desiredPath);
+
+            // (Opcional) Informa o usuário se o arquivo foi renomeado para evitar surpresas.
+            if (uniquePath != desiredPath)
+            {
+                Debug.LogWarning($"O arquivo '{Path.GetFileName(desiredPath)}' já existia. Salvando como '{Path.GetFileName(uniquePath)}' para evitar sobrescrita.");
+            }
+
+            // 3. Escreve o arquivo no caminho garantidamente único.
+            File.WriteAllText(uniquePath, code);
+
+            // 4. Importa o novo asset para que a Unity o reconheça.
+            AssetDatabase.ImportAsset(uniquePath);
+
+            Debug.Log($"Arquivo de teste final salvo em: {uniquePath}");
+            return uniquePath;
         }
     }
-    
 }

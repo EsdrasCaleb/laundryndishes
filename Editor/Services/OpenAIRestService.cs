@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
+using LaundryNDishes.Data;
 using UnityEngine;
 
 namespace LaundryNDishes.Services
@@ -11,8 +12,7 @@ namespace LaundryNDishes.Services
     // Modelos de dados para serialização/deserialização segura do JSON.
     [Serializable]
     internal class ChatRequest { public string model; public List<ChatMessage> messages; public float temperature; public int max_tokens; }
-    [Serializable]
-    internal class ChatMessage { public string role; public string content; }
+    
     [Serializable]
     internal class ChatResponse { public List<Choice> choices; }
     [Serializable]
@@ -35,7 +35,7 @@ namespace LaundryNDishes.Services
                 var requestBody = new ChatRequest
                 {
                     model = config.LlmModel,
-                    messages = new List<ChatMessage> { new ChatMessage { role = "user", content = requestData.Prompt } },
+                    messages = requestData.GeneratedPrompt.Messages, 
                     temperature = config.Temperature,
                     max_tokens = config.MaxTokens
                 };

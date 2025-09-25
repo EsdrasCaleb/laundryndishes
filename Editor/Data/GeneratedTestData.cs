@@ -20,13 +20,23 @@ namespace LaundryNDishes.Data
         // Armazenamos como um Unix Timestamp (long) para robustez.
         // Usaremos um Property Drawer para mostrá-lo de forma legível.
         public long LastEditTimestamp;
+        public bool passedInLastExecution;
 
         public GeneratedTestData(MonoScript script, string sutMethod)
         {
             TargetScript = script;
             SutMethod = sutMethod;
-            GeneratedTestScript = null; // Preenchido após a geração
             LastEditTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            passedInLastExecution = false; // Valor padrão
+        }
+        
+        public GeneratedTestData(MonoScript script, string sutMethod,MonoScript generatedTestScript,bool passedInLastExecution)
+        {
+            TargetScript = script;
+            SutMethod = sutMethod;
+            GeneratedTestScript = generatedTestScript; 
+            LastEditTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            this.passedInLastExecution = passedInLastExecution;
         }
     }
 }
