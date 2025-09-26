@@ -66,18 +66,34 @@ namespace LaundryNDishes.Core
 
                 // ETAPA 2: Loop de Geração e Correção de Código.
                 string lastGeneratedCode = "";
-                for (int i = 0; i < 3; i++) // Tenta até 3 vezes.
+                string structuredErrors = "";
+                for (int i = 0; i < 5; i++)
                 {
-                    CurrentStep = (i == 0) ? GeneratingStep.GeneratingCode : GeneratingStep.CorrectingCode;
-                    Debug.Log($"{(i == 0 ? "2." : "2." + (i + 1) + ".")} Gerando/Corrigindo código de teste (tentativa {i + 1})...");
-                    Prompt testPrompt = _promptBuilder.BuildGeneratorPrompt(promptType,methodDescription, _classSource, null, _extra);
+                    Prompt testPrompt;
+                    if (i == 0)
+                    {
+                        CurrentStep = GeneratingStep.GeneratingCode;
+                        Debug.Log(
+                            $"{(i == 0 ? "2." : "2." + (i + 1) + ".")} Gerando código de teste (tentativa {i + 1})...");
+                        testPrompt = _promptBuilder.BuildGeneratorPrompt(promptType, methodDescription,
+                            _classSource, null, _extra);
+                    }
+                    else
+                    {
+                        Debug.Log(
+                            $"{(i == 0 ? "2." : "2." + (i + 1) + ".")} Corrigindo código de teste (tentativa {i + 1})...");
+                        CurrentStep = GeneratingStep.CorrectingCode;
+                        testPrompt =
+                            _promptBuilder.BuildCorrectionPrompt(promptType, lastGeneratedCode, structuredErrors);
+                    }
+
                     var testRequest = new LLMRequestData { GeneratedPrompt = testPrompt, Config = _config };
                     var testResponse = await _llmService.GetResponseAsync(testRequest);
                     if (!testResponse.Success) throw new Exception("Falha ao gerar o código: " + testResponse.ErrorMessage);
                     lastGeneratedCode = CodeParser.ExtractTestCode(testResponse.Content);
-
+                    
                     var checker = new CompilationChecker();
-                    await checker.Run(lastGeneratedCode);
+                    await checker.Run(lastGeneratedCode,"Behavior",_config);
 
                     if (!checker.HasErrors)
                     {
@@ -87,9 +103,8 @@ namespace LaundryNDishes.Core
                         break; // Sucesso, sai do loop.
                     }
                     
-                    string structuredErrors = string.Join("\n", checker.CompilationErrors.Select(e => e.ToString()));
+                    structuredErrors = string.Join("\n", checker.CompilationErrors.Select(e => e.ToString()));
                     Debug.LogWarning($"Erros de compilação encontrados:\n{structuredErrors}");
-                    methodDescription = $"O código anterior teve os seguintes erros: {structuredErrors}. Por favor, corrija-os.";
                 }
 
                 if (string.IsNullOrEmpty(GeneratedTestCode))

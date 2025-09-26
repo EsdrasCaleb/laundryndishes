@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using LaundryNDishes.Data;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -28,7 +29,7 @@ namespace LaundryNDishes.Core
         public string TempFilePath { get; private set; }
         public string AssemblyName { get; private set; }
 
-        public async Task Run(string testCode)
+        public async Task Run(string testCode,String name, LnDConfig config)
         {
             if (CurrentState != State.Idle)
             {
@@ -38,7 +39,7 @@ namespace LaundryNDishes.Core
 
             CurrentState = State.SavingAndCompiling;
             CompilationErrors = new List<CompilationError>();
-            TempFilePath = Path.Combine("Assets", "Temp", $"TempTestScript_{Guid.NewGuid()}.cs");
+            TempFilePath = Path.Combine(config.PlayTestDestinationFolder, $"TempTestScript_{name}.cs");
 
             // Criamos o "tradutor" de callback para Task.
             var compilationTaskSource = new TaskCompletionSource<List<CompilationError>>();
@@ -80,7 +81,7 @@ namespace LaundryNDishes.Core
                 if (HasErrors)
                 {
                     // Se houver erros, o arquivo já deve ser limpo.
-                    AssetDatabase.DeleteAsset(TempFilePath);
+                    //AssetDatabase.DeleteAsset(TempFilePath);
                 }
                 else
                 {
@@ -92,7 +93,7 @@ namespace LaundryNDishes.Core
             {
                 Debug.LogException(ex);
                 CompilationErrors.Add(new CompilationError { Line = 0, Message = "Uma exceção ocorreu: " + ex.Message });
-                if (File.Exists(TempFilePath)) AssetDatabase.DeleteAsset(TempFilePath);
+                //if (File.Exists(TempFilePath)) AssetDatabase.DeleteAsset(TempFilePath);
             }
             finally
             {

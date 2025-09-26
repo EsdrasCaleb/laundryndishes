@@ -120,7 +120,7 @@ namespace LaundryNDishes.Core
         {
             string baseName = Path.GetFileName(folderPath);
             string desiredAssemblyName = baseName.Equals("Tests", System.StringComparison.OrdinalIgnoreCase) 
-                ? baseName 
+                ? "LnD.Tests" 
                 : $"{baseName}.Tests";
 
             // --- 2. Lógica para garantir um nome de assembly único no projeto ---
@@ -141,17 +141,6 @@ namespace LaundryNDishes.Core
             string asmdefContent = $@"
 {{
     ""name"": ""{finalAssemblyName}"",
-    ""rootNamespace"": """",
-    ""references"": [],
-    ""includePlatforms"": [],
-    ""excludePlatforms"": [],
-    ""allowUnsafeCode"": false,
-    ""overrideReferences"": true,
-    ""precompiledReferences"": [],
-    ""autoReferenced"": false,
-    ""defineConstraints"": [],
-    ""versionDefines"": [],
-    ""noEngineReferences"": false,
     ""optionalUnityReferences"": [
         ""TestAssemblies""
     ]

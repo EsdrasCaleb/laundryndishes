@@ -84,7 +84,7 @@ namespace LaundryNDishes.UI
             var llmService = LLMServiceFactory.GetCurrentService();
 
             Debug.Log($"Iniciando geração em lote de {methodNames.Count} teste(s) do tipo '{promptType}' para o script '{script.name}'.");
-            var generator = new UnitTestGenerator(script, llmService, config);
+            UnitTestGenerator generator = new UnitTestGenerator(script, llmService, config);
             // Loop que executa a geração para cada método, um de cada vez.
             foreach (var methodName in methodNames)
             {
