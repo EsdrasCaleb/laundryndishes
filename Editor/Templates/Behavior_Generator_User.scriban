@@ -1,0 +1,28 @@
+Based on the following C# source code of the class:
+```csharp
+{{ sut_class }}
+``` 
+{{ if sut_related_methods }}
+Contexto adicional: a classe também possui os seguintes métodos:
+```csharp
+{{ for method in sut_related_methods }}
+...
+{{ method }}
+{{ end }}
+```
+{{ end }}
+Your task is to generate a complete unit test using the Unity Test Framework (UTF) for the {{ extra }} method.
+
+The test must specifically validate the following intent: "{{ intention }}".
+
+RULES:
+
+Use UTF's [Test] or [UnityTest] attributes when appropriate.
+
+Include the required using statements at the top of the file.
+
+The test class must be public and follow naming conventions (e.g., TestsClassName).
+
+The response should contain ONLY the complete C# code. Do not include any explanations, introductions, or any text outside the code block.
+
+The code must be inside a "```csharp```" block.
