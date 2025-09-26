@@ -29,18 +29,17 @@ namespace LaundryNDishes.Core
 
         private readonly MonoScript _targetScript;
         private readonly string _classSource;
-        private readonly string _targetMethod;
+        private string _extra;
         private readonly ILLMService _llmService;
         private readonly LnDConfig _config;
         private readonly PromptBuilder _promptBuilder;
 
-        public UnitTestGenerator(MonoScript targetScript, string targetMethod, ILLMService llmService, LnDConfig config)
+        public UnitTestGenerator(MonoScript targetScript,  ILLMService llmService, LnDConfig config)
         {
             _targetScript = targetScript;
             string filePath = AssetDatabase.GetAssetPath(targetScript);
             _classSource = File.ReadAllText(filePath);
             
-            _targetMethod = targetMethod;
             _llmService = llmService;
             _config = config;
             _promptBuilder = new PromptBuilder(); // Instancia o builder.
@@ -49,15 +48,16 @@ namespace LaundryNDishes.Core
         /// <summary>
         /// Orquestra o processo completo de geração, compilação e execução de testes.
         /// </summary>
-        public async Task Generate()
+        public async Task Generate(PromptType promptType, string extra)
         {
             string tempTestPath = null;
+            _extra = extra;
             try
             {
                 // ETAPA 1: Obter a intenção do método.
                 CurrentStep = GeneratingStep.GettingIntention;
                 Debug.Log("1. Gerando intenção do método...");
-                Prompt intentionPrompt = _promptBuilder.BuildIntentionPrompt(_classSource, null, _targetMethod);
+                Prompt intentionPrompt = _promptBuilder.BuildIntentionPrompt(promptType,_classSource, null, _extra);
                 var intentionRequest = new LLMRequestData { GeneratedPrompt = intentionPrompt, Config = _config };
                 var intentionResponse = await _llmService.GetResponseAsync(intentionRequest);
                 if (!intentionResponse.Success) throw new Exception("Falha ao obter a intenção: " + intentionResponse.ErrorMessage);
@@ -70,7 +70,7 @@ namespace LaundryNDishes.Core
                 {
                     CurrentStep = (i == 0) ? GeneratingStep.GeneratingCode : GeneratingStep.CorrectingCode;
                     Debug.Log($"{(i == 0 ? "2." : "2." + (i + 1) + ".")} Gerando/Corrigindo código de teste (tentativa {i + 1})...");
-                    Prompt testPrompt = _promptBuilder.BuildGeneratorPrompt(methodDescription, _classSource, null, _targetMethod);
+                    Prompt testPrompt = _promptBuilder.BuildGeneratorPrompt(promptType,methodDescription, _classSource, null, _extra);
                     var testRequest = new LLMRequestData { GeneratedPrompt = testPrompt, Config = _config };
                     var testResponse = await _llmService.GetResponseAsync(testRequest);
                     if (!testResponse.Success) throw new Exception("Falha ao gerar o código: " + testResponse.ErrorMessage);
@@ -179,7 +179,7 @@ namespace LaundryNDishes.Core
             if (testEntry == null)
             {
                 // Usamos o construtor simples e preenchemos os campos.
-                testEntry = new GeneratedTestData(_targetScript, _targetMethod);
+                testEntry = new GeneratedTestData(_targetScript, _extra);
                 testEntry.GeneratedTestScript = generatedTestMonoScript; // Define a "chave" da busca.
                 db.AllTests.Add(testEntry);
             }
@@ -190,7 +190,7 @@ namespace LaundryNDishes.Core
             
             // Garante que o TargetScript e SutMethod estão corretos (útil se a entrada foi criada agora).
             testEntry.TargetScript = _targetScript;
-            testEntry.SutMethod = _targetMethod;
+            testEntry.SutMethod = _extra;
 
             // --- ETAPA 4: Salvar as alterações no banco de dados ---
             Debug.Log($"Atualizando entrada no banco de dados para o teste '{generatedTestMonoScript.name}'. Resultado: {(testEntry.passedInLastExecution ? "Passou" : "Falhou")}");
@@ -207,7 +207,7 @@ namespace LaundryNDishes.Core
         private string SaveFinalTestFile(string code)
         {
             // 1. Determina o nome e o caminho desejado para o arquivo.
-            string className = CodeParser.ExtractClassName(code) ?? _targetMethod.Replace("()", "");
+            string className = CodeParser.ExtractClassName(code) ?? _extra.Replace("()", "");
             string fileName = $"{className}.cs";
     
             // Garante que a pasta de destino exista. Esta parte do seu código já estava correta.

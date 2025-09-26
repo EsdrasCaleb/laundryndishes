@@ -42,7 +42,7 @@ namespace LaundryNDishes.Services
 
                 // 2. Serializar para JSON usando a ferramenta da Unity.
                 string jsonRequestBody = JsonUtility.ToJson(requestBody);
-                Debug.Log(jsonRequestBody);
+      
                 var content = new StringContent(jsonRequestBody, Encoding.UTF8, "application/json");
 
                 // 3. Configurar e enviar a requisição usando um HttpRequestMessage para mais controle.

@@ -72,5 +72,14 @@ namespace LaundryNDishes.UI
                 }
             }
         }
+        
+        // Adicione este método à sua classe GenerationProgressWindow
+        public void ShowFinishedMessage(string message)
+        {
+            _generator = null; // Para de monitorar o último gerador
+            // Desenha uma mensagem final
+            EditorGUILayout.HelpBox(message, MessageType.Info);
+            Repaint();
+        }
     }
 }

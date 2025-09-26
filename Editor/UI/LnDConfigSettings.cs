@@ -113,7 +113,7 @@ namespace LaundryNDishes.UI
                 var llmService = LLMServiceFactory.GetCurrentService();
                 
                 var prompt = new Prompt();
-                prompt.Messages.Add(new ChatMessage { role = "user", content = "Say 'hello' in one word." });
+                prompt.Messages.Add(new ChatMessage { role = "user", content = "This is a test do you hear me?" });
                 
                 var requestData = new LLMRequestData {
                     GeneratedPrompt = prompt,
