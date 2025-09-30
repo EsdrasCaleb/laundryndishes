@@ -1,3 +1,34 @@
+To simulate input in Unity, follow this pattern EXACTLY:
+```csharp
+```csharp
+// Exemplo de como simular input:
+using NUnit.Framework;
+using System.Collections;
+using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.TestTools;
+
+// 1. The class MUST inherit from InputTestFixture.
+public class MeuTesteDeInput : InputTestFixture
+{
+    [UnityTest]
+    public IEnumerator TesteDeExemploComInput()
+    {
+        // 2. Create and add the required virtual device (Keyboard, Mouse, Gamepad).
+        var keyboard = InputSystem.AddDevice<Keyboard>();
+
+        // 3. Simulate the action on the device (e.g. pressing the 'W' key).
+        Press(keyboard.wKey);
+
+       // 4. WAIT A FRAME for Unity to process the input.
+        yield return null; 
+
+        // 5. Check the result of the action in your game object.
+        // Assert.IsTrue(player.isMovingForward);
+    }
+}
+```
+
 Based on the following C# source code of the class:
 ```csharp
 {{ sut_class }}

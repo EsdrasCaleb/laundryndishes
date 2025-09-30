@@ -40,7 +40,12 @@ namespace LaundryNDishes.Core
         public Prompt BuildCorrectionPrompt(PromptType promptType, string code, string errors)
         {
             var data = new ScriptObject { ["code"] = code, ["errors"] = errors };
-            return BuildPromptFromTemplates(promptType, "Correction", data);
+            var prompt = new Prompt();
+            string systemTemplate = $"_Correction_System.scriban";
+            string userTemplate = $"_Correction_User.scriban";
+            prompt.Messages.Add(new ChatMessage { role = "system", content = RenderTemplate(systemTemplate, data) });
+            prompt.Messages.Add(new ChatMessage { role = "user", content = RenderTemplate(userTemplate, data) });
+            return prompt;
         }
 
         private Prompt BuildPromptFromTemplates(PromptType promptType, string baseName, ScriptObject data)
