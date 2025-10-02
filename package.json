@@ -9,5 +9,8 @@
   "author": {
     "name": "Esdras Caleb Oliveira Silva",
     "url": "https://esdrascaleb.github.io/"
+  },
+  "dependencies": {
+    "com.unity.roslyn": "0.2.2-preview"
   }
 }

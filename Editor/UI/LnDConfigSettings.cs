@@ -3,6 +3,7 @@ using UnityEngine;
 using LaundryNDishes.Data;
 using LaundryNDishes.Services;
 using LaundryNDishes.Core;
+using UnityEditorInternal;
 
 namespace LaundryNDishes.UI
 {
@@ -82,17 +83,21 @@ namespace LaundryNDishes.UI
                 GUI.enabled = true;
                 EditorGUILayout.HelpBox(_connectionTestResult, MessageType.None);
             }
-
-            // --- CONFIGURAÇÕES GERAIS ---
+            
             EditorGUILayout.Space(20);
             EditorGUILayout.LabelField("Generation Settings", EditorStyles.boldLabel);
             config.Temperature = EditorGUILayout.Slider("Temperature", config.Temperature, 0f, 2f);
             config.MaxTokens = EditorGUILayout.IntField("Max Tokens", config.MaxTokens);
             
+            
             EditorGUILayout.Space(20);
-            EditorGUILayout.LabelField("Project Path Settings", EditorStyles.boldLabel);
-            config.PlayTestDestinationFolder = EditorGUILayout.TextField("Playmode Test Destination Folder", config.PlayTestDestinationFolder);
-            //config.EditorTestScriptsFolder = EditorGUILayout.TextField("Editor Test Destination Folder", config.EditorTestScriptsFolder);
+            EditorGUILayout.LabelField("Assembly Configuration", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("Arraste aqui os arquivos de Assembly Definition (.asmdef) do seu projeto.", MessageType.Info);
+
+            config.MainProjectAssembly = EditorGUILayout.ObjectField("Project Assembly (Runtime)", config.MainProjectAssembly, typeof(AssemblyDefinitionAsset), false) as AssemblyDefinitionAsset;
+            config.PlayModeTestAssembly = EditorGUILayout.ObjectField("Play Mode Tests Assembly", config.PlayModeTestAssembly, typeof(AssemblyDefinitionAsset), false) as AssemblyDefinitionAsset;
+            config.EditorTestAssembly = EditorGUILayout.ObjectField("Editor Tests Assembly", config.EditorTestAssembly, typeof(AssemblyDefinitionAsset), false) as AssemblyDefinitionAsset;
+            
             EditorGUILayout.LabelField(new GUIContent("Custom Templates Folder (Optional)", "Deixe em branco para usar os templates padrão do plugin."));
             config.CustomTemplatesFolder = EditorGUILayout.TextField(" ", config.CustomTemplatesFolder);
             // Se qualquer valor na UI mudou, o EndChangeCheck será true.

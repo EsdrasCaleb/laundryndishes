@@ -29,7 +29,7 @@ namespace LaundryNDishes.Core
         public string TempFilePath { get; private set; }
         public string AssemblyName { get; private set; }
 
-        public async Task Run(string testCode,String name, LnDConfig config)
+        public async Task Run(string testCode,String filename, LnDConfig config)
         {
             if (CurrentState != State.Idle)
             {
@@ -39,8 +39,7 @@ namespace LaundryNDishes.Core
 
             CurrentState = State.SavingAndCompiling;
             CompilationErrors = new List<CompilationError>();
-            TempFilePath = Path.Combine(config.PlayTestDestinationFolder, $"TempTestScript_{name}.cs");
-
+            TempFilePath = Path.Combine(config.PlayTestDestinationFolder, $"{filename}_Test.cs");
             // Criamos o "tradutor" de callback para Task.
             var compilationTaskSource = new TaskCompletionSource<List<CompilationError>>();
 

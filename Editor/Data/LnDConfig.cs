@@ -1,5 +1,7 @@
 using System;
+using System.IO;
 using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 
 namespace LaundryNDishes.Data
@@ -46,8 +48,13 @@ namespace LaundryNDishes.Data
         public string TokenizerPath { get; set; }
         public float Temperature { get; set; }
         public int MaxTokens { get; set; }
-        public string PlayTestDestinationFolder { get; set; }
-        public string EditorTestScriptsFolder { get; set; }
+        //public string PlayTestDestinationFolder { get; set; }
+        public string PlayTestDestinationFolder =>Path.GetDirectoryName(AssetDatabase.GetAssetPath(PlayModeTestAssembly));
+        public string EditorTestScriptsFolder =>Path.GetDirectoryName(AssetDatabase.GetAssetPath(EditorTestAssembly));
+        
+        public AssemblyDefinitionAsset MainProjectAssembly { get; set; }
+        public AssemblyDefinitionAsset PlayModeTestAssembly { get; set; }
+        public AssemblyDefinitionAsset EditorTestAssembly { get; set; }
         public string CustomTemplatesFolder { get; set; }
         public TestDatabase ActiveDatabase { get; private set; }
         
@@ -74,8 +81,10 @@ namespace LaundryNDishes.Data
             TokenizerPath = EditorPrefs.GetString(KeyPrefix + "TokenizerPath", "Assets/Models/tokenizer.json");
             Temperature = EditorPrefs.GetFloat(KeyPrefix + "Temperature", 0.7f);
             MaxTokens = EditorPrefs.GetInt(KeyPrefix + "MaxTokens", 2048);
-            PlayTestDestinationFolder = EditorPrefs.GetString(KeyPrefix + "TestDestinationFolder", "Assets/Tests/Generated");
-            EditorTestScriptsFolder = EditorPrefs.GetString(KeyPrefix + "TestableScriptsFolder", "Assets/Scripts");
+            //PlayTestDestinationFolder = EditorPrefs.GetString(KeyPrefix + "PlayTestDestinationFolder", string.Empty);
+            MainProjectAssembly = LoadAsmdefFromPath(EditorPrefs.GetString(KeyPrefix + "MainProjectAssemblyGuid", string.Empty));
+            PlayModeTestAssembly = LoadAsmdefFromPath(EditorPrefs.GetString(KeyPrefix + "PlayModeTestAssemblyGuid", string.Empty));
+            EditorTestAssembly = LoadAsmdefFromPath(EditorPrefs.GetString(KeyPrefix + "EditorTestAssemblyGuid", string.Empty));
             CustomTemplatesFolder = EditorPrefs.GetString(KeyPrefix + "TemplateFolder", string.Empty);
             
             string dbPath = EditorPrefs.GetString(ActiveDatabasePathKey, string.Empty);
@@ -100,8 +109,9 @@ namespace LaundryNDishes.Data
             EditorPrefs.SetString(KeyPrefix + "TokenizerPath", TokenizerPath);
             EditorPrefs.SetFloat(KeyPrefix + "Temperature", Temperature);
             EditorPrefs.SetInt(KeyPrefix + "MaxTokens", MaxTokens);
-            EditorPrefs.SetString(KeyPrefix + "TestDestinationFolder", PlayTestDestinationFolder);
-            EditorPrefs.SetString(KeyPrefix + "TestableScriptsFolder", EditorTestScriptsFolder);
+            EditorPrefs.SetString(KeyPrefix + "MainProjectAssemblyGuid", AssetDatabase.GetAssetPath(MainProjectAssembly));
+            EditorPrefs.SetString(KeyPrefix + "PlayModeTestAssemblyGuid", AssetDatabase.GetAssetPath(PlayModeTestAssembly));
+            EditorPrefs.SetString(KeyPrefix + "EditorTestAssemblyGuid", AssetDatabase.GetAssetPath(EditorTestAssembly));
             EditorPrefs.SetString(KeyPrefix + "CustomTemplatesFolder", CustomTemplatesFolder);
 
             string path = (ActiveDatabase != null) ? AssetDatabase.GetAssetPath(ActiveDatabase) : string.Empty;
@@ -117,6 +127,12 @@ namespace LaundryNDishes.Data
         public void SetActiveDatabase(TestDatabase database)
         {
             ActiveDatabase = database;
+        }
+        
+        private AssemblyDefinitionAsset LoadAsmdefFromPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            return AssetDatabase.LoadAssetAtPath<AssemblyDefinitionAsset>(path);
         }
     }
 }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using LaundryNDishes.Core;
 using UnityEditor;
 using UnityEngine;
@@ -10,6 +11,9 @@ namespace LaundryNDishes.UI
 
         // Guarda o estado atual para evitar redesenhos desnecessários.
         private UnitTestGenerator.GeneratingStep _lastDisplayedStep = UnitTestGenerator.GeneratingStep.Idle;
+        // Lista para armazenar as mensagens de log recebidas.
+        private readonly List<string> _logMessages = new List<string>();
+        private Vector2 _scrollPosition;
 
         /// <summary>
         /// O método principal que inicia o monitoramento de um processo de geração.
@@ -18,7 +22,21 @@ namespace LaundryNDishes.UI
         {
             _generator = generator;
             _lastDisplayedStep = UnitTestGenerator.GeneratingStep.Idle; // Reseta o estado
+            _logMessages.Clear();
+            _lastDisplayedStep = UnitTestGenerator.GeneratingStep.Idle;
+
+            // INSCRIÇÃO: Diz ao gerador para chamar 'HandleProgressLog' sempre que o evento OnProgressLog disparar.
+            _generator.OnProgressLog += HandleProgressLog;
         }
+        
+        private void HandleProgressLog(string message)
+        {
+            _logMessages.Add(message);
+            // Força o scroll a ir para o final para mostrar sempre a última mensagem.
+            _scrollPosition.y = float.MaxValue; 
+            Repaint(); // Força a janela a se redesenhar com a nova mensagem.
+        }
+
 
         // A Unity chama este método para desenhar a UI da janela.
         void OnGUI()
@@ -41,7 +59,18 @@ namespace LaundryNDishes.UI
             EditorGUI.ProgressBar(EditorGUILayout.GetControlRect(), progress, "Progresso...");
 
             EditorGUILayout.Space();
-
+            
+            EditorGUILayout.LabelField("Log de Atividades:", EditorStyles.boldLabel);
+            _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition, GUILayout.ExpandHeight(true));
+            {
+                // Loop que desenha cada mensagem da lista na tela.
+                foreach (var message in _logMessages)
+                {
+                    EditorGUILayout.LabelField(message, EditorStyles.wordWrappedLabel);
+                }
+            }
+            
+            EditorGUILayout.EndScrollView();
             // Mensagem final
             if (_generator.CurrentStep == UnitTestGenerator.GeneratingStep.Finished)
             {
@@ -77,9 +106,18 @@ namespace LaundryNDishes.UI
         public void ShowFinishedMessage(string message)
         {
             _generator = null; // Para de monitorar o último gerador
-            // Desenha uma mensagem final
+            _logMessages.Add("--------------------");
+            _logMessages.Add(message); // Adiciona a mensagem final ao log também
             EditorGUILayout.HelpBox(message, MessageType.Info);
             Repaint();
+        }
+        
+        void OnDestroy()
+        {
+            if (_generator != null)
+            {
+                _generator.OnProgressLog -= HandleProgressLog;
+            }
         }
     }
 }

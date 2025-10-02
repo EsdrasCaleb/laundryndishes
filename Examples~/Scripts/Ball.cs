@@ -1,14 +1,15 @@
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody))]
 public class Ball : MonoBehaviour
 {
     public float speed = 5f;
-    private Rigidbody2D rb;
-    private bool isLaunched = false;
+    private Rigidbody rb;
+    public bool isLaunched = false;
 
     void Start()
     {
-        rb = GetComponent<Rigidbody2D>();
+        rb = GetComponent<Rigidbody>();
         ResetBall();
     }
 
@@ -24,14 +25,14 @@ public class Ball : MonoBehaviour
     {
         float x = Random.Range(0, 2) == 0 ? -1 : 1;
         float y = Random.Range(0, 2) == 0 ? -1 : 1;
-        rb.linearVelocity = new Vector2(x, y).normalized * speed;
+        rb.linearVelocity = new Vector3(x, y,0).normalized * speed;
         isLaunched = true;
     }
 
     public void ResetBall()
     {
-        rb.linearVelocity = Vector2.zero;
-        transform.position = Vector2.zero;
+        rb.linearVelocity = Vector3.zero;
+        transform.position = Vector3.zero;
         isLaunched = false;
     }
 

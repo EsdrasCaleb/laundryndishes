@@ -21,7 +21,7 @@ namespace LaundryNDishes.Core
             CheckDatabaseConfiguration();
             
             // Em seguida, garante que o ambiente de teste está configurado.
-            EnsureTestAssemblyExists();
+            //EnsureTestAssemblyExists();
         }
 
         private static void CheckDatabaseConfiguration()

@@ -22,234 +22,274 @@ namespace LaundryNDishes.Core
             UpdatingDatabase,
             Finished
         }
+        
+        public event Action<string> OnProgressLog;
 
         public GeneratingStep CurrentStep { get; private set; } = GeneratingStep.Idle;
         public bool? TestPassed { get; private set; } = null;
         public string GeneratedTestCode { get; private set; }
 
         private readonly MonoScript _targetScript;
-        private readonly string _classSource;
         private string _extra;
         private readonly ILLMService _llmService;
         private readonly LnDConfig _config;
         private readonly PromptBuilder _promptBuilder;
 
-        public UnitTestGenerator(MonoScript targetScript,  ILLMService llmService, LnDConfig config)
+        public UnitTestGenerator(ILLMService llmService, LnDConfig config)
         {
-            _targetScript = targetScript;
-            string filePath = AssetDatabase.GetAssetPath(targetScript);
-            _classSource = File.ReadAllText(filePath);
-            
             _llmService = llmService;
             _config = config;
-            _promptBuilder = new PromptBuilder(); // Instancia o builder.
+            _promptBuilder = new PromptBuilder();
+        }
+        
+        private void Log(string message)
+        {
+            // Continua logando no console para depuração.
+            Debug.Log(message);
+            
+            // Dispara o evento para qualquer "ouvinte" (nossa janela).
+            // O '?.' é uma checagem de segurança para garantir que há pelo menos um ouvinte.
+            OnProgressLog?.Invoke(message);
         }
 
         /// <summary>
-        /// Orquestra o processo completo de geração, compilação e execução de testes.
+        /// O método principal, agora atuando como um "orquestrador" limpo e legível.
         /// </summary>
-        public async Task Generate(PromptType promptType, string extra)
+        public async Task Generate(MonoScript targetScript, string extra, PromptType promptType)
         {
             string tempTestPath = null;
-            _extra = extra;
             try
             {
+                string classSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
+
                 // ETAPA 1: Obter a intenção do método.
-                CurrentStep = GeneratingStep.GettingIntention;
-                Debug.Log("1. Gerando intenção do método...");
-                Prompt intentionPrompt = _promptBuilder.BuildIntentionPrompt(promptType,_classSource, null, _extra);
-                var intentionRequest = new LLMRequestData { GeneratedPrompt = intentionPrompt, Config = _config };
-                var intentionResponse = await _llmService.GetResponseAsync(intentionRequest);
-                if (!intentionResponse.Success) throw new Exception("Falha ao obter a intenção: " + intentionResponse.ErrorMessage);
-                var methodDescription = intentionResponse.Content;
-                Debug.Log($"Intenção recebida: {methodDescription}");
+                string intention = await GetIntentionAsync(promptType, classSource, extra);
 
-                // ETAPA 2: Loop de Geração e Correção de Código.
-                string lastGeneratedCode = "";
-                string structuredErrors = "";
-                for (int i = 0; i < 5; i++)
-                {
-                    Prompt testPrompt;
-                    if (i == 0)
-                    {
-                        CurrentStep = GeneratingStep.GeneratingCode;
-                        Debug.Log(
-                            $"{(i == 0 ? "2." : "2." + (i + 1) + ".")} Gerando código de teste (tentativa {i + 1})...");
-                        testPrompt = _promptBuilder.BuildGeneratorPrompt(promptType, methodDescription,
-                            _classSource, null, _extra);
-                    }
-                    else
-                    {
-                        Debug.Log(
-                            $"{(i == 0 ? "2." : "2." + (i + 1) + ".")} Corrigindo código de teste (tentativa {i + 1})...");
-                        CurrentStep = GeneratingStep.CorrectingCode;
-                        testPrompt =
-                            _promptBuilder.BuildCorrectionPrompt(promptType, lastGeneratedCode, structuredErrors);
-                    }
-
-                    var testRequest = new LLMRequestData { GeneratedPrompt = testPrompt, Config = _config };
-                    var testResponse = await _llmService.GetResponseAsync(testRequest);
-                    if (!testResponse.Success) throw new Exception("Falha ao gerar o código: " + testResponse.ErrorMessage);
-                    lastGeneratedCode = CodeParser.ExtractTestCode(testResponse.Content);
-                    
-                    var checker = new CompilationChecker();
-                    await checker.Run(lastGeneratedCode,"Behavior",_config);
-
-                    if (!checker.HasErrors)
-                    {
-                        GeneratedTestCode = lastGeneratedCode;
-                        tempTestPath = checker.TempFilePath;
-                        Debug.Log("Código compilou com sucesso!");
-                        break; // Sucesso, sai do loop.
-                    }
-                    
-                    structuredErrors = string.Join("\n", checker.CompilationErrors.Select(e => e.ToString()));
-                    Debug.LogWarning($"Erros de compilação encontrados:\n{structuredErrors}");
-                }
-
-                if (string.IsNullOrEmpty(GeneratedTestCode))
-                {
-                    throw new Exception("Não foi possível gerar um código de teste que compilasse.");
-                }
-
-                // ETAPA 3: Executar o teste.
-                CurrentStep = GeneratingStep.RunningTests;
-                Debug.Log("3. Executando os testes...");
-                var executor = new TestExecutor();
-                string className = CodeParser.ExtractClassName(GeneratedTestCode);
-                string assemblyName = CompilationPipeline.GetAssemblyNameFromScriptPath(tempTestPath);
-                await executor.Run(assemblyName, className);
-                TestPassed = executor.TestPassed;
+                // ETAPA 2: Gerar e compilar o código em um loop de tentativas.
+                var generationResult = await GenerateAndCompileCodeAsync(promptType, targetScript, extra, intention);
+                GeneratedTestCode = generationResult.CompiledCode;
+                tempTestPath = generationResult.FilePath;
+                
+                // ETAPA 3: Executar o teste gerado.
+                TestPassed = await ExecuteTestAsync(GeneratedTestCode, tempTestPath);
 
                 // ETAPA 4: Atualizar o Banco de Dados.
-                CurrentStep = GeneratingStep.UpdatingDatabase;
-                Debug.Log("4. Atualizando o banco de dados...");
-                CurrentStep = GeneratingStep.UpdatingDatabase;
-                Debug.Log("4. Atualizando o banco de dados...");
-                UpdateTestDatabase(); // O método agora usa os resultados armazenados na classe.
-
-
-                if (TestPassed.HasValue && TestPassed.Value)
-                {
-                    Debug.Log("5. Teste passou! Processo finalizado com sucesso.");
-                }
-                else
-                {
-                    Debug.LogWarning("5. O teste gerado falhou ou não pôde ser executado.");
-                }
+                UpdateTestDatabase(targetScript, extra, TestPassed, GeneratedTestCode);
+                
+                Log(TestPassed.HasValue && TestPassed.Value
+                    ? "5. Teste passou! Processo finalizado com sucesso."
+                    : "5. O teste gerado falhou ou não pôde ser executado.");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Ocorreu um erro fatal durante a geração: {ex.Message}");
+                Log($"ERRO FATAL: {ex.Message}");
                 TestPassed = false;
-                UpdateTestDatabase(); // Tenta salvar o resultado de falha mesmo assim.
+                UpdateTestDatabase(targetScript, extra, false, null);
             }
             finally
             {
                 // ETAPA FINAL: Limpeza do arquivo temporário.
-                CurrentStep = GeneratingStep.Finished;
-                if (!string.IsNullOrEmpty(tempTestPath) && File.Exists(tempTestPath))
-                {
-                    AssetDatabase.DeleteAsset(tempTestPath);
-                    Debug.Log("Arquivo de teste temporário deletado.");
-                }
+                CleanupTemporaryFile(tempTestPath);
             }
         }
-        
+
+        #region Helper Methods - As Etapas da Geração
+
         /// <summary>
-        /// Salva o arquivo de teste gerado e atualiza a entrada correspondente no banco de dados.
-        /// A busca pela entrada agora é feita usando o MonoScript do arquivo de teste gerado.
+        /// ETAPA 1: Pede ao LLM para descrever a intenção do método/cenário.
         /// </summary>
-        private void UpdateTestDatabase()
+        private async Task<string> GetIntentionAsync(PromptType promptType, string classSource, string extra)
         {
+            CurrentStep = GeneratingStep.GettingIntention;
+            Log("1. Gerando intenção do método...");
+            Prompt intentionPrompt = _promptBuilder.BuildIntentionPrompt(promptType, classSource, null, extra);
+            var intentionRequest = new LLMRequestData { GeneratedPrompt = intentionPrompt, Config = _config };
+            var intentionResponse = await _llmService.GetResponseAsync(intentionRequest);
+
+            if (!intentionResponse.Success)
+                throw new Exception("Falha ao obter a intenção: " + intentionResponse.ErrorMessage);
+
+            Log($"Intenção recebida: {intentionResponse.Content}");
+            return intentionResponse.Content;
+        }
+
+        /// <summary>
+        /// ETAPA 2: Entra em um loop para gerar o código e corrigi-lo até que compile.
+        /// </summary>
+        private async Task<(string CompiledCode, string FilePath)> GenerateAndCompileCodeAsync(PromptType promptType, MonoScript targetScript, string extra, string initialIntention)
+        {
+            string lastGeneratedCode = "";
+            string structuredErrors = "";
+            string classSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
+
+            for (int i = 0; i < 5; i++)
+            {
+                CurrentStep = (i == 0) ? GeneratingStep.GeneratingCode : GeneratingStep.CorrectingCode;
+                Log($"2.{i + 1}. {(i == 0 ? "Gerando" : "Corrigindo")} código de teste (tentativa {i + 1})...");
+
+                Prompt testPrompt = (i == 0)
+                    ? _promptBuilder.BuildGeneratorPrompt(promptType, initialIntention, classSource, null, extra)
+                    : _promptBuilder.BuildCorrectionPrompt(promptType, lastGeneratedCode, structuredErrors);
+
+                var testRequest = new LLMRequestData { GeneratedPrompt = testPrompt, Config = _config };
+                var testResponse = await _llmService.GetResponseAsync(testRequest);
+                if (!testResponse.Success) throw new Exception("Falha ao gerar o código: " + testResponse.ErrorMessage);
+                
+                lastGeneratedCode = CodeParser.ExtractTestCode(testResponse.Content);
+                if (string.IsNullOrEmpty(lastGeneratedCode)) continue;
+                
+                var checker = new CompilationChecker();
+                // Passa um nome base para o arquivo temporário
+                string tempFileNameBase = $"{targetScript.name}_{extra}";
+                await checker.Run(lastGeneratedCode, tempFileNameBase, _config);
+
+                if (!checker.HasErrors)
+                {
+                    Log("Código compilou com sucesso!");
+                    return (lastGeneratedCode, checker.TempFilePath);
+                }
+                
+                structuredErrors = string.Join("\n", checker.CompilationErrors.Select(e => e.ToString()));
+                Log($"Erros de compilação encontrados.");
+            }
+
+            throw new Exception("Não foi possível gerar um código de teste que compilasse após 5 tentativas.");
+        }
+
+        /// <summary>
+        /// ETAPA 3: Executa o teste compilado usando o Test Runner da Unity.
+        /// </summary>
+        private async Task<bool?> ExecuteTestAsync(string code, string filePath)
+        {
+            CurrentStep = GeneratingStep.RunningTests;
+            Log("3. Executando os testes...");
+            
+            var executor = new TestExecutor();
+            string className = CodeParser.ExtractClassName(code);
+            string assemblyName = CompilationPipeline.GetAssemblyNameFromScriptPath(filePath);
+            
+            await executor.Run(assemblyName, className);
+            
+            Log($"Resultado do teste: {(executor.TestPassed.HasValue && executor.TestPassed.Value ? "Passou" : "Falhou")}");
+            return executor.TestPassed;
+        }
+
+        /// <summary>
+        /// ETAPA FINAL: Deleta o arquivo de teste temporário.
+        /// </summary>
+        private void CleanupTemporaryFile(string filePath)
+        {
+            CurrentStep = GeneratingStep.Finished;
+            /*
+            if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
+            {
+                AssetDatabase.DeleteAsset(filePath);
+                Log("Arquivo de teste temporário deletado.");
+            }
+            */
+        }
+
+        /// <summary>
+        /// ETAPA 4: Atualiza a entrada no banco de dados para o teste que acabou de ser gerado e executado.
+        /// </summary>
+        private void UpdateTestDatabase(MonoScript targetScript, string extra, bool? testPassed, string generatedCode)
+        {
+            CurrentStep = GeneratingStep.UpdatingDatabase;
+            Log("4. Atualizando o banco de dados...");
+
             var db = TestDatabase.Instance;
             if (db == null)
             {
-                Debug.LogError("Não foi possível encontrar o TestDatabase para salvar o resultado.");
+                Log("ERRO: Não foi possível encontrar o TestDatabase para salvar o resultado.");
                 return;
             }
 
-            // Se por algum motivo não houver código gerado, não há o que fazer.
-            if (string.IsNullOrEmpty(GeneratedTestCode))
+            if (string.IsNullOrEmpty(generatedCode))
             {
-                Debug.LogWarning("Nenhum código foi gerado, a atualização do banco de dados foi pulada.");
+                Log("AVISO: Nenhum código foi gerado, a atualização do banco de dados foi pulada.");
                 return;
             }
 
-            // --- ETAPA 1: Salvar o arquivo de teste e obter sua referência (MonoScript) ---
-            // Esta etapa agora acontece PRIMEIRO, pois precisamos da referência para a busca.
-            string finalPath = SaveFinalTestFile(GeneratedTestCode);
-            var generatedTestMonoScript = AssetDatabase.LoadAssetAtPath<MonoScript>(finalPath);
+            // 1. Salva o código gerado em um arquivo permanente e obtém seu caminho.
+            string finalPath = SaveFinalTestFile(generatedCode, targetScript, extra);
+            if (string.IsNullOrEmpty(finalPath)) return; // Se o salvamento falhou, aborta.
 
+            // 2. Carrega o MonoScript a partir do arquivo que acabamos de salvar.
+            var generatedTestMonoScript = AssetDatabase.LoadAssetAtPath<MonoScript>(finalPath);
             if (generatedTestMonoScript == null)
             {
-                Debug.LogError($"Falha ao carregar o MonoScript do arquivo de teste salvo em '{finalPath}'. A atualização do banco de dados foi abortada.");
+                Log($"ERRO: Falha ao carregar o MonoScript de '{finalPath}'. A atualização foi abortada.");
                 return;
             }
 
-            // --- ETAPA 2: Procurar a entrada no DB usando a referência do arquivo gerado ---
+            // 3. Procura a entrada no DB usando a referência do arquivo gerado como chave.
             var testEntry = db.AllTests.FirstOrDefault(t => t.GeneratedTestScript == generatedTestMonoScript);
 
-            // Se a entrada não existir para este arquivo de teste específico, cria uma nova.
+            // Se a entrada não existir, cria uma nova.
             if (testEntry == null)
             {
-                // Usamos o construtor simples e preenchemos os campos.
-                testEntry = new GeneratedTestData(_targetScript, _extra);
-                testEntry.GeneratedTestScript = generatedTestMonoScript; // Define a "chave" da busca.
+                testEntry = new GeneratedTestData(targetScript, extra);
+                testEntry.GeneratedTestScript = generatedTestMonoScript;
                 db.AllTests.Add(testEntry);
             }
 
-            // --- ETAPA 3: Atualizar o estado da entrada (seja ela nova ou existente) ---
-            testEntry.passedInLastExecution = TestPassed.HasValue && TestPassed.Value;
+            // 4. Atualiza o estado da entrada (seja ela nova ou existente).
+            testEntry.passedInLastExecution = testPassed.HasValue && testPassed.Value;
             testEntry.LastEditTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            
-            // Garante que o TargetScript e SutMethod estão corretos (útil se a entrada foi criada agora).
-            testEntry.TargetScript = _targetScript;
-            testEntry.SutMethod = _extra;
+            testEntry.TargetScript = targetScript; // Garante que a referência ao alvo está correta
+            testEntry.SutMethod = extra;
 
-            // --- ETAPA 4: Salvar as alterações no banco de dados ---
-            Debug.Log($"Atualizando entrada no banco de dados para o teste '{generatedTestMonoScript.name}'. Resultado: {(testEntry.passedInLastExecution ? "Passou" : "Falhou")}");
+            // 5. Salva as alterações no ScriptableObject.
+            Log($"Atualizando entrada no banco de dados para '{generatedTestMonoScript.name}'. Resultado: {(testEntry.passedInLastExecution ? "Passou" : "Falhou")}");
             EditorUtility.SetDirty(db);
             AssetDatabase.SaveAssets();
         }
 
+
         /// <summary>
-        /// Salva o código do teste em um arquivo, garantindo que a pasta de destino exista
-        /// e que nenhum arquivo existente seja sobrescrito.
+        /// Salva o código do teste em um arquivo permanente, com um nome padronizado e único.
         /// </summary>
-        /// <param name="code">O código-fonte do teste a ser salvo.</param>
-        /// <returns>O caminho relativo do arquivo que foi efetivamente salvo.</returns>
-        private string SaveFinalTestFile(string code)
+        private string SaveFinalTestFile(string code, MonoScript targetScript, string extra)
         {
-            // 1. Determina o nome e o caminho desejado para o arquivo.
-            string className = CodeParser.ExtractClassName(code) ?? _extra.Replace("()", "");
-            string fileName = $"{className}.cs";
-    
-            // Garante que a pasta de destino exista. Esta parte do seu código já estava correta.
             string destinationFolder = _config.PlayTestDestinationFolder;
-            Directory.CreateDirectory(destinationFolder);
-    
-            string desiredPath = Path.Combine(destinationFolder, fileName).Replace("\\", "/");
 
-            // 2. A MÁGICA: Pede à Unity para gerar um caminho único.
-            // Se 'desiredPath' já existir, a Unity retornará "Assets/Tests/MyTest 1.cs", etc.
-            // Se não existir, ela retornará o próprio 'desiredPath'.
-            string uniquePath = AssetDatabase.GenerateUniqueAssetPath(desiredPath);
-
-            // (Opcional) Informa o usuário se o arquivo foi renomeado para evitar surpresas.
-            if (uniquePath != desiredPath)
+            if (string.IsNullOrEmpty(destinationFolder))
             {
-                Debug.LogWarning($"O arquivo '{Path.GetFileName(desiredPath)}' já existia. Salvando como '{Path.GetFileName(uniquePath)}' para evitar sobrescrita.");
+                Log("ERRO: A pasta de destino para testes de Play Mode não foi configurada nos Project Settings!");
+                return null;
             }
 
-            // 3. Escreve o arquivo no caminho garantidamente único.
-            File.WriteAllText(uniquePath, code);
+            // --- LÓGICA DE NOMENCLATURA PADRONIZADA ---
 
-            // 4. Importa o novo asset para que a Unity o reconheça.
+            // 1. Limpa o nome do método/descrição para ser seguro para um nome de arquivo.
+            string sanitizedExtra = extra.Split('(')[0].Trim(); // Pega apenas o nome do método antes de parênteses
+            foreach (char c in System.IO.Path.GetInvalidFileNameChars())
+            {
+                sanitizedExtra = sanitizedExtra.Replace(c, '_');
+            }
+
+            // 2. Cria um nome base padronizado.
+            // Ex: "Player_Jump_Test"
+            string baseFileName = $"{targetScript.name}_{sanitizedExtra}_Test";
+    
+            // 3. Monta o caminho desejado.
+            string desiredPath = Path.Combine(destinationFolder, $"{baseFileName}.cs").Replace("\\", "/");
+
+            // 4. USA A FUNÇÃO DA UNITY PARA GARANTIR UNICIDADE.
+            // Se "Player_Jump_Test.cs" já existir, esta função retornará "Player_Jump_Test 1.cs".
+            string uniquePath = AssetDatabase.GenerateUniqueAssetPath(desiredPath);
+
+            // --- FIM DA LÓGICA DE NOMENCLATURA ---
+
+            File.WriteAllText(uniquePath, code);
             AssetDatabase.ImportAsset(uniquePath);
 
-            Debug.Log($"Arquivo de teste final salvo em: {uniquePath}");
+            Log($"Arquivo de teste final salvo em: {uniquePath}");
             return uniquePath;
         }
+        
+
+        #endregion
+        
     }
 }
