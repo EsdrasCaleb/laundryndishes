@@ -98,7 +98,7 @@ namespace LaundryNDishes.Core
         /// <summary>
         /// ETAPA 1: Pede ao LLM para descrever a intenção do método/cenário.
         /// </summary>
-        private async Task<string> GetIntentionAsync(PromptType promptType, string classSource, string extra)
+        public async Task<string> GetIntentionAsync(PromptType promptType, string classSource, string extra)
         {
             CurrentStep = GeneratingStep.GettingIntention;
             Log("1. Gerando intenção do método...");
@@ -116,7 +116,7 @@ namespace LaundryNDishes.Core
         /// <summary>
         /// ETAPA 2: Entra em um loop para gerar o código e corrigi-lo até que compile.
         /// </summary>
-        private async Task<(string CompiledCode, string FilePath)> GenerateAndCompileCodeAsync(PromptType promptType, MonoScript targetScript, string extra, string initialIntention)
+        public async Task<(string CompiledCode, string FilePath)> GenerateAndCompileCodeAsync(PromptType promptType, MonoScript targetScript, string extra, string initialIntention)
         {
             string lastGeneratedCode = "";
             string structuredErrors = "";
@@ -159,7 +159,7 @@ namespace LaundryNDishes.Core
         /// <summary>
         /// ETAPA 3: Executa o teste compilado usando o Test Runner da Unity.
         /// </summary>
-        private async Task<bool?> ExecuteTestAsync(string code, string filePath)
+        public async Task<bool?> ExecuteTestAsync(string code, string filePath)
         {
             CurrentStep = GeneratingStep.RunningTests;
             Log("3. Executando os testes...");
