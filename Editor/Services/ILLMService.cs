@@ -7,7 +7,7 @@ namespace LaundryNDishes
     public class LLMRequestData
     {
         public Prompt GeneratedPrompt; 
-        public Data.LnDConfig Config; // Passa toda a configuração necessária.
+        public UnityData.LnDConfig Config; // Passa toda a configuração necessária.
     }
 
 // Um objeto para receber a resposta de forma estruturada.

@@ -23,11 +23,8 @@ namespace LaundryNDishes.Data
         public bool passedInLastExecution;
 
         public GeneratedTestData(MonoScript script, string sutMethod)
+            : this(script, sutMethod, null, false)
         {
-            TargetScript = script;
-            SutMethod = sutMethod;
-            LastEditTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            passedInLastExecution = false; // Valor padrão
         }
         
         public GeneratedTestData(MonoScript script, string sutMethod,MonoScript generatedTestScript,bool passedInLastExecution)

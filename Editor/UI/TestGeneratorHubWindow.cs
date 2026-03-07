@@ -5,7 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using LaundryNDishes.Core;
-using LaundryNDishes.Data;
+using LaundryNDishes.UnityData;
 using LaundryNDishes.Services;
 
 namespace LaundryNDishes.UI
@@ -151,7 +151,7 @@ namespace LaundryNDishes.UI
             try
             {
                 var config = LnDConfig.Instance;
-                var llmService = LLMServiceFactory.GetCurrentService();
+                var llmService = config.GetCurrentService();
                 var generator = new UnitTestGenerator(llmService, config);
 
                 _statusMessage = $"Iniciando geração em lote de {methodNames.Count} teste(s)...";

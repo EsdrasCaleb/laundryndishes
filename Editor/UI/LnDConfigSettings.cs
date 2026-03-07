@@ -1,7 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 using LaundryNDishes.Data;
-using LaundryNDishes.Services;
+using LaundryNDishes.UnityData;
 using LaundryNDishes.Core;
 using UnityEditorInternal;
 
@@ -115,7 +115,7 @@ namespace LaundryNDishes.UI
             try
             {
                 var config = LnDConfig.Instance;
-                var llmService = LLMServiceFactory.GetCurrentService();
+                var llmService = config.GetCurrentService();
                 
                 var prompt = new Prompt();
                 prompt.Messages.Add(new ChatMessage { role = "user", content = "This is a test do you hear me?" });

@@ -4,7 +4,9 @@ using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
 
-namespace LaundryNDishes.Data
+
+//TODO separar em dois um geral e um para o Unity
+namespace LaundryNDishes.UnityData
 {
     public enum LLMProviderType { OpenAIRestServer, LlamaCppDirect, UnitySentis }
 
@@ -36,6 +38,16 @@ namespace LaundryNDishes.Data
         private LnDConfig()
         {
             Load();
+        }
+        
+        public ILLMService GetCurrentService()
+        {
+            switch (Instance.ProviderType)
+            {
+                case LLMProviderType.OpenAIRestServer: return  new Services.OpenAIRestService();
+                case LLMProviderType.LlamaCppDirect: return new LlamaCppDirectService();
+                default: throw new ArgumentOutOfRangeException(nameof(LnDConfig.Instance.ProviderType));
+            }
         }
 
         public LLMProviderType ProviderType { get; set; }
