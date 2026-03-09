@@ -53,5 +53,10 @@ namespace LaundryNDishes.CLI
             }
             return null;
         }
+        public static void GenerateTest()
+        {
+            
+        }
+        
     }
 }

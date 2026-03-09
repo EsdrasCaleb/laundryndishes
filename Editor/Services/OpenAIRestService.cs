@@ -12,12 +12,12 @@ namespace LaundryNDishes.Services
     // Modelos de dados para serialização/deserialização segura do JSON.
     [Serializable]
     internal class ChatRequest { public string model; public List<ChatMessage> messages; public float temperature; public int max_tokens; }
-    
+
     [Serializable]
     internal class ChatResponse { public List<Choice> choices; }
     [Serializable]
     internal class Choice { public ChatMessage message; }
-    
+
     // A classe agora implementa nossa interface.
     public class OpenAIRestService : ILLMService
     {
@@ -30,19 +30,19 @@ namespace LaundryNDishes.Services
             try
             {
                 var config = requestData.Config;
-                
+
                 // 1. Construir o objeto da requisição de forma segura.
                 var requestBody = new ChatRequest
                 {
                     model = config.LlmModel,
-                    messages = requestData.GeneratedPrompt.Messages, 
+                    messages = requestData.GeneratedPrompt.Messages,
                     temperature = config.Temperature,
                     max_tokens = config.MaxTokens
                 };
 
                 // 2. Serializar para JSON usando a ferramenta da Unity.
                 string jsonRequestBody = JsonUtility.ToJson(requestBody);
-      
+
                 var content = new StringContent(jsonRequestBody, Encoding.UTF8, "application/json");
 
                 // 3. Configurar e enviar a requisição usando um HttpRequestMessage para mais controle.
@@ -67,7 +67,7 @@ namespace LaundryNDishes.Services
                     }
                     else
                     {
-                        Debug.LogError($"LLM request failed with status: {response.StatusCode}\nResponse: {responseData}");
+                        Debug.LogError($"LLM request failed with status: {response.StatusCode}\nResponse: {responseData} \nRequest: {jsonRequestBody}");
                         return new LLMResponse { Success = false, ErrorMessage = $"API Error: {response.ReasonPhrase}" };
                     }
                 }

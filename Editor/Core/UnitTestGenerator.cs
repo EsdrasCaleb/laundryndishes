@@ -23,7 +23,7 @@ namespace LaundryNDishes.Core
             UpdatingDatabase,
             Finished
         }
-        
+
         public event Action<string> OnProgressLog;
 
         public GeneratingStep CurrentStep { get; private set; } = GeneratingStep.Idle;
@@ -45,22 +45,17 @@ namespace LaundryNDishes.Core
 
         public UnitTestGenerator()
         {
-            
+
         }
-        
+
         private void Log(string message)
         {
             // Continua logando no console para depuração.
             Debug.Log(message);
-            
+
             // Dispara o evento para qualquer "ouvinte" (nossa janela).
             // O '?.' é uma checagem de segurança para garantir que há pelo menos um ouvinte.
             OnProgressLog?.Invoke(message);
-        }
-
-        public async Task GenerateTest()
-        {
-            
         }
 
         /// <summary>
@@ -80,16 +75,17 @@ namespace LaundryNDishes.Core
                 var generationResult = await GenerateAndCompileCodeAsync(promptType, targetScript, extra, intention);
                 GeneratedTestCode = generationResult.CompiledCode;
                 tempTestPath = generationResult.FilePath;
-                
+                Log($"Teste compilado com sucesso temporariamente em  {tempTestPath}");
                 // ETAPA 3: Executar o teste gerado.
                 TestPassed = await ExecuteTestAsync(GeneratedTestCode, tempTestPath);
 
                 // ETAPA 4: Atualizar o Banco de Dados.
-                UpdateTestDatabase(targetScript, extra, TestPassed, GeneratedTestCode);
+                UpdateTestDatabase(targetScript, extra, null, GeneratedTestCode);
                 
                 Log(TestPassed.HasValue && TestPassed.Value
                     ? "5. Teste passou! Processo finalizado com sucesso."
                     : "5. O teste gerado falhou ou não pôde ser executado.");
+                
             }
             catch (Exception ex)
             {
@@ -123,8 +119,8 @@ namespace LaundryNDishes.Core
             Log($"Intenção recebida: {intentionResponse.Content}");
             return intentionResponse.Content;
         }
-        
-        
+
+
 
         /// <summary>
         /// ETAPA 2: Entra em um loop para gerar o código e corrigi-lo até que compile.
@@ -147,10 +143,10 @@ namespace LaundryNDishes.Core
                 var testRequest = new LLMRequestData { GeneratedPrompt = testPrompt, Config = _config };
                 var testResponse = await _llmService.GetResponseAsync(testRequest);
                 if (!testResponse.Success) throw new Exception("Falha ao gerar o código: " + testResponse.ErrorMessage);
-                
+
                 lastGeneratedCode = CodeParser.ExtractTestCode(testResponse.Content);
                 if (string.IsNullOrEmpty(lastGeneratedCode)) continue;
-                
+
                 var checker = new CompilationChecker();
                 // Passa um nome base para o arquivo temporário
                 string tempFileNameBase = $"{targetScript.name}_{extra}";
@@ -161,7 +157,7 @@ namespace LaundryNDishes.Core
                     Log("Código compilou com sucesso!");
                     return (lastGeneratedCode, checker.TempFilePath);
                 }
-                
+
                 structuredErrors = string.Join("\n", checker.CompilationErrors.Select(e => e.ToString()));
                 Log($"Erros de compilação encontrados.");
             }
@@ -176,13 +172,13 @@ namespace LaundryNDishes.Core
         {
             CurrentStep = GeneratingStep.RunningTests;
             Log("3. Executando os testes...");
-            
+
             var executor = new TestExecutor();
             string className = CodeParser.ExtractClassName(code);
             string assemblyName = CompilationPipeline.GetAssemblyNameFromScriptPath(filePath);
-            
+
             await executor.Run(assemblyName, className);
-            
+
             Log($"Resultado do teste: {(executor.TestPassed.HasValue && executor.TestPassed.Value ? "Passou" : "Falhou")}");
             return executor.TestPassed;
         }
@@ -193,13 +189,13 @@ namespace LaundryNDishes.Core
         private void CleanupTemporaryFile(string filePath)
         {
             CurrentStep = GeneratingStep.Finished;
-            /*
+            
             if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
             {
                 AssetDatabase.DeleteAsset(filePath);
                 Log("Arquivo de teste temporário deletado.");
             }
-            */
+            
         }
 
         /// <summary>
@@ -226,7 +222,7 @@ namespace LaundryNDishes.Core
             // 1. Salva o código gerado em um arquivo permanente e obtém seu caminho.
             string finalPath = SaveFinalTestFile(generatedCode, targetScript, extra);
             if (string.IsNullOrEmpty(finalPath)) return; // Se o salvamento falhou, aborta.
-
+            Log($"Teste salvo com sucesso em'{finalPath}'.");
             // 2. Carrega o MonoScript a partir do arquivo que acabamos de salvar.
             var generatedTestMonoScript = AssetDatabase.LoadAssetAtPath<MonoScript>(finalPath);
             if (generatedTestMonoScript == null)
@@ -284,7 +280,7 @@ namespace LaundryNDishes.Core
             // 2. Cria um nome base padronizado.
             // Ex: "Player_Jump_Test"
             string baseFileName = $"{targetScript.name}_{sanitizedExtra}_Test";
-    
+
             // 3. Monta o caminho desejado.
             string desiredPath = Path.Combine(destinationFolder, $"{baseFileName}.cs").Replace("\\", "/");
 
@@ -300,9 +296,9 @@ namespace LaundryNDishes.Core
             Log($"Arquivo de teste final salvo em: {uniquePath}");
             return uniquePath;
         }
-        
+
 
         #endregion
-        
+
     }
 }
