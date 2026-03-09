@@ -93,7 +93,6 @@ namespace LaundryNDishes.UnityData
             TokenizerPath = EditorPrefs.GetString(KeyPrefix + "TokenizerPath", "Assets/Models/tokenizer.json");
             Temperature = EditorPrefs.GetFloat(KeyPrefix + "Temperature", 0.7f);
             MaxTokens = EditorPrefs.GetInt(KeyPrefix + "MaxTokens", 2048);
-            //PlayTestDestinationFolder = EditorPrefs.GetString(KeyPrefix + "PlayTestDestinationFolder", string.Empty);
             MainProjectAssembly = LoadAsmdefFromPath(EditorPrefs.GetString(KeyPrefix + "MainProjectAssemblyGuid", string.Empty));
             PlayModeTestAssembly = LoadAsmdefFromPath(EditorPrefs.GetString(KeyPrefix + "PlayModeTestAssemblyGuid", string.Empty));
             EditorTestAssembly = LoadAsmdefFromPath(EditorPrefs.GetString(KeyPrefix + "EditorTestAssemblyGuid", string.Empty));

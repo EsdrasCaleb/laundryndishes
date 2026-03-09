@@ -8,7 +8,7 @@ using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
 
-namespace LaundryNDishes.Core
+namespace LaundryNDishes.TestRunner
 {
     public struct CompilationError
     {
@@ -29,7 +29,7 @@ namespace LaundryNDishes.Core
         public string TempFilePath { get; private set; }
         public string AssemblyName { get; private set; }
 
-        public async Task Run(string testCode,String filename, LnDConfig config)
+        public async Task Run(string testCode,String filename, String folder)
         {
             if (CurrentState != State.Idle)
             {
@@ -39,7 +39,7 @@ namespace LaundryNDishes.Core
 
             CurrentState = State.SavingAndCompiling;
             CompilationErrors = new List<CompilationError>();
-            TempFilePath = Path.Combine(config.PlayTestDestinationFolder, $"{filename}_Test.cs");
+            TempFilePath = Path.Combine(folder, $"{filename}_Test.cs");
             // Criamos o "tradutor" de callback para Task.
             var compilationTaskSource = new TaskCompletionSource<List<CompilationError>>();
 

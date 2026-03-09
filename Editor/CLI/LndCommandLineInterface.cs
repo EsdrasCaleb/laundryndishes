@@ -19,6 +19,7 @@ namespace LaundryNDishes.CLI
             // 1. Capturar argumentos customizados
             string targetScriptPath = GetArgValue("-targetScript");
             string promptTypeStr = GetArgValue("-promptType");
+            string resultUrl = GetArgValue("-outputPath");
 
             if (string.IsNullOrEmpty(targetScriptPath))
             {

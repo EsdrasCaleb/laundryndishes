@@ -1,11 +1,12 @@
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
-using LaundryNDishes.Data;
+using LaundryNDishes.UnityData;
 using System.IO;
 using System.Linq;
+using LaundryNDishes.Data;
 
-namespace LaundryNDishes.Core
+namespace LaundryNDishes.UnityData
 {
     [InitializeOnLoad]
     public static class Bootstrap

@@ -22,7 +22,7 @@ namespace LaundryNDishes.Core
             }
 
             // 2. Carrega a instância do nosso banco de dados.
-            var db = Data.TestDatabase.Instance;
+            var db = UnityData.TestDatabase.Instance;
             if (db == null || db.AllTests == null || db.AllTests.Count == 0)
             {
                 return AssetDeleteResult.DidNotDelete;

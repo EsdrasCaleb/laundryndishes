@@ -4,7 +4,7 @@ using UnityEditor;
 using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
 
-namespace LaundryNDishes.Core
+namespace LaundryNDishes.TestRunner
 {
     public class TestExecutor
     {

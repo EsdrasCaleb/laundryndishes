@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEngine;
 using LaundryNDishes.UnityData;
 using LaundryNDishes.Data;
+using LaundryNDishes.TestRunner;
 using UnityEditor.Compilation;
 
 namespace LaundryNDishes.Core
@@ -41,6 +42,11 @@ namespace LaundryNDishes.Core
             _config = config;
             _promptBuilder = new PromptBuilder();
         }
+
+        public UnitTestGenerator()
+        {
+            
+        }
         
         private void Log(string message)
         {
@@ -50,6 +56,11 @@ namespace LaundryNDishes.Core
             // Dispara o evento para qualquer "ouvinte" (nossa janela).
             // O '?.' é uma checagem de segurança para garantir que há pelo menos um ouvinte.
             OnProgressLog?.Invoke(message);
+        }
+
+        public async Task GenerateTest()
+        {
+            
         }
 
         /// <summary>
@@ -112,6 +123,8 @@ namespace LaundryNDishes.Core
             Log($"Intenção recebida: {intentionResponse.Content}");
             return intentionResponse.Content;
         }
+        
+        
 
         /// <summary>
         /// ETAPA 2: Entra em um loop para gerar o código e corrigi-lo até que compile.
@@ -141,7 +154,7 @@ namespace LaundryNDishes.Core
                 var checker = new CompilationChecker();
                 // Passa um nome base para o arquivo temporário
                 string tempFileNameBase = $"{targetScript.name}_{extra}";
-                await checker.Run(lastGeneratedCode, tempFileNameBase, _config);
+                await checker.Run(lastGeneratedCode, tempFileNameBase, _config.PlayTestDestinationFolder);
 
                 if (!checker.HasErrors)
                 {

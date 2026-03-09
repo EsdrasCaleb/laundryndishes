@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using LaundryNDishes.UnityData;
 using LaundryNDishes.Data;
 using Scriban;
 using Scriban.Runtime;
@@ -43,9 +44,8 @@ namespace LaundryNDishes.Core
             var prompt = new Prompt();
             string systemTemplate = $"_Correction_System.scriban";
             string userTemplate = $"_Correction_User.scriban";
-            prompt.Messages.Add(new ChatMessage { role = "system", content = RenderTemplate(systemTemplate, data) });
-            prompt.Messages.Add(new ChatMessage { role = "user", content = RenderTemplate(userTemplate, data) });
-            return prompt;
+  
+            return BuildPromptFromTemplateNames(userTemplate, data,systemTemplate);
         }
 
         private Prompt BuildPromptFromTemplates(PromptType promptType, string baseName, ScriptObject data)
@@ -56,10 +56,46 @@ namespace LaundryNDishes.Core
             string systemTemplate = $"{promptType.ToString()}_{baseName}_System.scriban";
             string userTemplate = $"{promptType.ToString()}_{baseName}_User.scriban";
 
-            prompt.Messages.Add(new ChatMessage { role = "system", content = RenderTemplate(systemTemplate, data) });
-            prompt.Messages.Add(new ChatMessage { role = "user", content = RenderTemplate(userTemplate, data) });
+            
+            return BuildPromptFromTemplateNames(userTemplate, data,systemTemplate);
+        }
+
+        public Prompt BuildPromptFromTemplateNames(string userTemplate, ScriptObject data, string systemTemplate)
+        {
+            string userTemplateString = RenderTemplate(userTemplate, data);
+            string systemTemplateString = null;
+            if (string.IsNullOrEmpty(systemTemplate))
+            {
+                systemTemplateString = RenderTemplate(systemTemplate, data);
+            }
+            return BuildPrompt(userTemplateString, systemTemplateString);
+        }
+        
+        public Prompt BuildPrompt(string userPrompt, string systemPrompt)
+        {
+            var prompt = new Prompt();
+
+            if (!string.IsNullOrEmpty(systemPrompt))
+            {
+                prompt.Messages.Add(new ChatMessage
+                {
+                    role = "system",
+                    content = systemPrompt
+                });
+            }
+
+            if (!string.IsNullOrEmpty(userPrompt))
+            {
+                prompt.Messages.Add(new ChatMessage
+                {
+                    role = "user",
+                    content = userPrompt
+                });
+            }
+
             return prompt;
         }
+        
 
         private string RenderTemplate(string templateFileName, ScriptObject data)
         {
