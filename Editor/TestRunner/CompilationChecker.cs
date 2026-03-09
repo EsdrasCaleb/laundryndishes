@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
 
@@ -25,9 +24,12 @@ namespace LaundryNDishes.TestRunner
         public bool HasErrors => CompilationErrors.Count > 0;
         
         public List<CompilationError> CompilationErrors { get; private set; }
-        public string TempFilePath { get; private set; }
+        
+        // Mantive a propriedade caso precise ler o nome depois
         public string AssemblyName { get; private set; }
 
+        // O parâmetro 'folder' foi mantido na assinatura para não quebrar o código
+        // que chama essa função, mas ele será ignorado aqui dentro.
         public async Task Run(string testCode, string filename, string folder)
         {
             if (CurrentState != State.Idle)
@@ -39,27 +41,46 @@ namespace LaundryNDishes.TestRunner
             CurrentState = State.SavingAndCompiling;
             CompilationErrors = new List<CompilationError>();
             
-            // Salvamos o arquivo fisicamente. Como o Editor está "Locked", a Unity
-            // não vai tentar importar isso automaticamente para o projeto principal ainda.
-            TempFilePath = Path.Combine(folder, $"{filename}_Test.cs");
+            // 1. Definimos um diretório seguro DENTRO da pasta Temp do projeto Unity.
+            // A pasta Temp é ignorada pelo AssetDatabase, então não causa recarregamentos.
+            string tempDirectory = Path.Combine("Temp", "LnD_Validation");
+            Directory.CreateDirectory(tempDirectory);
+
+            // 2. Caminhos para o script C# temporário e a DLL temporária
+            string tempCsPath = Path.Combine(tempDirectory, $"{filename}_Validation.cs");
+            string tempDllPath = Path.Combine(tempDirectory, $"{filename}_Validation.dll");
+            
             var compilationTaskSource = new TaskCompletionSource<List<CompilationError>>();
 
             try
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(TempFilePath));
-                await File.WriteAllTextAsync(TempFilePath, testCode);
+                // Salva o "rascunho" na pasta Temp
+                await File.WriteAllTextAsync(tempCsPath, testCode);
 
-                // --- A MÁGICA ACONTECE AQUI ---
-                // Criamos uma DLL temporária na pasta Temp da Unity (fora dos Assets)
-                string tempDllPath = Path.Combine("Temp", $"{filename}_TempValidation.dll");
+                // 3. Usa o AssemblyBuilder apontando para o arquivo rascunho
+                var assemblyBuilder = new AssemblyBuilder(tempDllPath, new[] { tempCsPath });
                 
-                // Usamos o AssemblyBuilder para compilar APENAS esse arquivo
-                var assemblyBuilder = new AssemblyBuilder(tempDllPath, new[] { TempFilePath });
+                assemblyBuilder.flags = AssemblyBuilderFlags.EditorAssembly;
 
-                // Evento que dispara quando a compilação isolada termina
+                // Coleta todas as DLLs (UnityEngine, NUnit, e os seus próprios scripts como o "Ball")
+                var references = new HashSet<string>();
+                foreach (var asm in CompilationPipeline.GetAssemblies())
+                {
+                    // Adiciona os assemblies do seu projeto (ex: Assembly-CSharp.dll onde o Ball está)
+                    references.Add(asm.outputPath);
+                    
+                    // Adiciona as referências base da Unity (ex: UnityEngine.CoreModule, nunit.framework)
+                    foreach (var refPath in asm.compiledAssemblyReferences)
+                    {
+                        references.Add(refPath);
+                    }
+                }
+
+                // Injeta todas as dependências no nosso compilador isolado
+                assemblyBuilder.additionalReferences = references.ToArray();
+
                 assemblyBuilder.buildFinished += (string assemblyPath, CompilerMessage[] compilerMessages) =>
                 {
-                    // Filtramos apenas os erros
                     var errors = compilerMessages
                         .Where(m => m.type == CompilerMessageType.Error)
                         .Select(msg => new CompilationError { Line = msg.line, Message = msg.message })
@@ -68,33 +89,33 @@ namespace LaundryNDishes.TestRunner
                     compilationTaskSource.TrySetResult(errors);
                 };
 
-                // Inicia a compilação em background (NÃO causa Domain Reload)
+                // Inicia a compilação isolada
                 assemblyBuilder.Build();
                 
-                // Esperamos o callback do AssemblyBuilder
+                // Aguarda o resultado
                 CompilationErrors = await compilationTaskSource.Task;
 
                 if (HasErrors)
                 {
-                    // Erros encontrados (a IA vai tentar corrigir graças ao seu loop)
-                    Debug.Log($"[Checker] {CompilationErrors.Count} erro(s) encontrados na validação isolada.");
+                    Debug.Log($"[Checker] {CompilationErrors.Count} erro(s) encontrados na validação de {filename}.");
                 }
                 else
                 {
-                    // Sucesso!
                     AssemblyName = filename; 
                 }
-
-                // Limpa a DLL temporária, pois só precisávamos dela para validar os erros
-                if (File.Exists(tempDllPath)) File.Delete(tempDllPath);
             }
             catch (Exception ex)
             {
                 Debug.LogException(ex);
-                CompilationErrors.Add(new CompilationError { Line = 0, Message = "Exceção: " + ex.Message });
+                CompilationErrors.Add(new CompilationError { Line = 0, Message = "Exceção Interna: " + ex.Message });
             }
             finally
             {
+                // 4. LIMPEZA TOTAL: Apaga o .cs e a .dll rascunhos. 
+                // Nenhum lixo fica no projeto!
+                if (File.Exists(tempCsPath)) File.Delete(tempCsPath);
+                if (File.Exists(tempDllPath)) File.Delete(tempDllPath);
+                
                 CurrentState = State.Finished;
             }
         }

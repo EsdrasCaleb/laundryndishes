@@ -1,10 +1,11 @@
 using UnityEditor;
 using UnityEngine;
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using LaundryNDishes.Core;
 using LaundryNDishes.UnityCore;
+using System.IO;
+
 
 namespace LaundryNDishes.CLI
 {
@@ -95,6 +96,8 @@ namespace LaundryNDishes.CLI
                 Debug.Log("[LnD CLI] Iniciando geração em lote por pasta...");
                 
                 string folderPath = GetArgValue("-folder");
+                string csvPath = GetArgValue("-csv");
+
 
                 if (string.IsNullOrEmpty(folderPath) || !AssetDatabase.IsValidFolder(folderPath))
                 {
@@ -104,7 +107,7 @@ namespace LaundryNDishes.CLI
                 }
 
                 // Iniciamos o processo principal em background
-                var batchTask = RunBatchGenerationAsync(folderPath);
+                var batchTask = RunBatchGenerationAsync(folderPath, csvPath);
 
                 // O mesmo truque do update para manter a Unity ativa
                 EditorApplication.update += () =>
@@ -134,13 +137,16 @@ namespace LaundryNDishes.CLI
         /// <summary>
         /// Lógica assíncrona que varre a pasta e aciona a IA.
         /// </summary>
-        private static async Task RunBatchGenerationAsync(string folderPath)
+        private static async Task RunBatchGenerationAsync(string folderPath, string csvPath = null)
         {
             var config = LnDConfig.Instance;
             var llmService = config.GetCurrentService();
             var generator = new UnitTestGenerator(llmService, config);
             
-
+            if (!string.IsNullOrEmpty(csvPath) && !File.Exists(csvPath))
+            {
+                File.WriteAllText(csvPath, "SUTClass,SUTMethod,TestType,TestFile,NumberOfCorrections,TimeToGenerate(ms),Status\n");
+            }
             // BLOQUEIA A RECOMPILAÇÃO: Impede a Unity de travar durante o loop ao criar novos arquivos
             EditorApplication.LockReloadAssemblies();
             
@@ -171,14 +177,14 @@ namespace LaundryNDishes.CLI
                         foreach (var method in behaviorMethods)
                         {
                             Debug.Log($"   -> [Behavior] Gerando teste para: {method}");
-                            await generator.Generate(script, method, PromptType.Behavior);
-                        }
+                            await generator.Generate(script, method, PromptType.Behavior, csvPath);                        
+                       }
 
                         // 2. Gera os testes de lógica pura do MonoBehaviour (Uniti)
                         foreach (var method in unitMethods)
                         {
                             Debug.Log($"   -> [Uniti] Gerando teste para: {method}");
-                            await generator.Generate(script, method, PromptType.Uniti);
+                            await generator.Generate(script, method, PromptType.Uniti, csvPath);
                         }
                     }
                     else
@@ -187,7 +193,7 @@ namespace LaundryNDishes.CLI
                         foreach (var method in unitMethods)
                         {
                             Debug.Log($"   -> [Unitieditor] Gerando teste para: {method}");
-                            await generator.Generate(script, method, PromptType.Unitieditor);
+                            await generator.Generate(script, method, PromptType.Unitieditor, csvPath);
                         }
                     }
                 }
