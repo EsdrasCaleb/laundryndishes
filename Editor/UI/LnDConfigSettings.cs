@@ -1,7 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 using LaundryNDishes.Data;
-using LaundryNDishes.UnityData;
+using LaundryNDishes.UnityCore;
 using LaundryNDishes.Core;
 using UnityEditorInternal;
 

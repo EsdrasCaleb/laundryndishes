@@ -1,0 +1,40 @@
+Based on the following C# class:
+
+```csharp
+{{ sut_class }}
+````
+
+{{ if sut_related_methods }}
+Additional context:
+
+```csharp
+{{ for method in sut_related_methods }}
+...
+{{ method }}
+{{ end }}
+```
+
+{{ end }}
+
+Generate a Unity Test Framework Editor Mode test for the method {{ extra }}.
+
+TEST OBJECTIVE
+{{ intention }}
+
+Requirements:
+
+* Arrange the necessary objects and state.
+* Invoke the method behavior.
+* Assert observable results related to the objective.
+
+Rules:
+
+* Use [Test] or [UnityTest] when appropriate.
+* Include required using statements.
+* The test class must be public and named after the SUT (e.g., ClassNameTests).
+
+Output format:
+
+* Only valid C# code.
+* Exactly one `csharp` code block.
+* No explanations or extra text.

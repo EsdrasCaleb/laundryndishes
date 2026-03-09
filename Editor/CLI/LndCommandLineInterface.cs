@@ -2,42 +2,203 @@ using UnityEditor;
 using UnityEngine;
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using LaundryNDishes.Core;
-using LaundryNDishes.Data;
+using LaundryNDishes.UnityCore;
 
 namespace LaundryNDishes.CLI
 {
     public static class LndCommandLineInterface
     {
-        // Exemplo de comando: 
-        // Unity.exe -batchmode -nographics -executeMethod LaundryNDishes.CLI.LndCommandLineInterface.RunBenchmark -myArg "valor"
-
-        public static void GenerateIntention()
+        
+        public static void GenerateTest()
         {
-            Debug.Log("[LnD CLI] Iniciando Benchmark de Geração...");
-
-            // 1. Capturar argumentos customizados
-            string targetScriptPath = GetArgValue("-targetScript");
-            string promptTypeStr = GetArgValue("-promptType");
-            string resultUrl = GetArgValue("-outputPath");
-
-            if (string.IsNullOrEmpty(targetScriptPath))
+            try
             {
-                Debug.LogError("Caminho do script alvo não fornecido! Use -targetScript <path>");
-                EditorApplication.Exit(1); // Sai com erro
-                return;
+                Debug.Log("[LnD CLI] Iniciando processo via linha de comando...");
+
+                // 1. Lemos os argumentos que você passou no terminal
+                string targetScriptPath = GetArgValue("-script");
+                string extra = GetArgValue("-method");
+                string promptTypeStr = GetArgValue("-type");
+
+                // Validação básica
+                if (string.IsNullOrEmpty(targetScriptPath) || string.IsNullOrEmpty(extra))
+                {
+                    Debug.LogError("[LnD CLI] ERRO: Faltam argumentos! Certifique-se de usar: -script <caminho> -method <nome_do_metodo>");
+                    EditorApplication.Exit(1); // Exit 1 indica erro para o terminal
+                    return;
+                }
+
+                // 2. Carrega o script da Unity usando o caminho passado (ex: Assets/Scripts/Player.cs)
+                MonoScript targetScript = AssetDatabase.LoadAssetAtPath<MonoScript>(targetScriptPath);
+                if (targetScript == null)
+                {
+                    Debug.LogError($"[LnD CLI] ERRO: Não foi possível encontrar o script em: '{targetScriptPath}'");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
+                // 3. Define o PromptType (Padrão: Uniti)
+                PromptType promptType = PromptType.Uniti;
+                if (!string.IsNullOrEmpty(promptTypeStr) && Enum.TryParse(promptTypeStr, true, out PromptType parsedType))
+                {
+                    promptType = parsedType;
+                }
+
+                // 4. Inicializa o gerador
+                var config = LnDConfig.Instance;
+                var llmService = config.GetCurrentService();
+                var generator = new UnitTestGenerator(llmService, config);
+
+                // ... (código anterior igual até a linha do generator.Generate)
+
+                Debug.Log($"[LnD CLI] Gerando teste para o script: {targetScript.name} | Método: {extra} | Tipo: {promptType}");
+
+                // INICIA a tarefa, mas NÃO usa GetAwaiter().GetResult()
+                var genTask = generator.Generate(targetScript, extra, promptType);
+
+                // Inscreve um "checador" no loop do Unity Editor
+                EditorApplication.update += () =>
+                {
+                    // Fica checando a cada frame se a tarefa já terminou
+                    if (genTask.IsCompleted)
+                    {
+                        if (genTask.IsFaulted)
+                        {
+                            Debug.LogError($"[LnD CLI] ERRO FATAL: {genTask.Exception?.GetBaseException().Message}");
+                            EditorApplication.Exit(1); // Sai com erro
+                        }
+                        else
+                        {
+                            Debug.Log("[LnD CLI] Processo finalizado com sucesso!");
+                            EditorApplication.Exit(0); // Sai com sucesso
+                        }
+                    }
+                };
             }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[LnD CLI] ERRO FATAL NA EXECUÇÃO: {ex.Message}\n{ex.StackTrace}");
+                EditorApplication.Exit(1);
+            }
+        }
+        
+        /// <summary>
+        /// Entry point da CLI para gerar testes para uma pasta inteira.
+        /// Comando: -executeMethod LaundryNDishes.CLI.LndCommandLineInterface.GenerateTestsFolder -folder "Assets/Scripts/MinhaPasta"
+        /// </summary>
+        public static void GenerateTestsFolder()
+        {
+            try
+            {
+                Debug.Log("[LnD CLI] Iniciando geração em lote por pasta...");
+                
+                string folderPath = GetArgValue("-folder");
 
-            // 2. Lógica de execução (exemplo rápido)
-            // Aqui você chamaria seu UnitTestGenerator ou carregaria o TestDatabase
-            
-            Debug.Log($"[LnD CLI] Executando para: {targetScriptPath} com tipo {promptTypeStr}");
+                if (string.IsNullOrEmpty(folderPath) || !AssetDatabase.IsValidFolder(folderPath))
+                {
+                    Debug.LogError("[LnD CLI] ERRO: Pasta inválida ou não fornecida. Use: -folder <caminho_da_pasta>");
+                    EditorApplication.Exit(1);
+                    return;
+                }
 
-            // IMPORTANTE: Como sua geração é ASYNC, você precisaria de um 
-            // pequeno helper para rodar tarefas async dentro de métodos estáticos da Unity
-            // ou usar o EditorApplication.update para monitorar o progresso.
+                // Iniciamos o processo principal em background
+                var batchTask = RunBatchGenerationAsync(folderPath);
+
+                // O mesmo truque do update para manter a Unity ativa
+                EditorApplication.update += () =>
+                {
+                    if (batchTask.IsCompleted)
+                    {
+                        if (batchTask.IsFaulted)
+                        {
+                            Debug.LogError($"[LnD CLI] ERRO FATAL NO LOTE: {batchTask.Exception?.GetBaseException().Message}");
+                            EditorApplication.Exit(1);
+                        }
+                        else
+                        {
+                            Debug.Log("[LnD CLI] Geração em lote finalizada com sucesso!");
+                            EditorApplication.Exit(0);
+                        }
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[LnD CLI] ERRO FATAL: {ex.Message}");
+                EditorApplication.Exit(1);
+            }
+        }
+
+        /// <summary>
+        /// Lógica assíncrona que varre a pasta e aciona a IA.
+        /// </summary>
+        private static async Task RunBatchGenerationAsync(string folderPath)
+        {
+            var config = LnDConfig.Instance;
+            var llmService = config.GetCurrentService();
+            var generator = new UnitTestGenerator(llmService, config);
             
-            // EditorApplication.Exit(0); // Sucesso
+
+            // BLOQUEIA A RECOMPILAÇÃO: Impede a Unity de travar durante o loop ao criar novos arquivos
+            EditorApplication.LockReloadAssemblies();
+            
+            try
+            {
+                // Busca todos os scripts dentro da pasta informada
+                string[] guids = AssetDatabase.FindAssets("t:MonoScript", new[] { folderPath });
+
+                foreach (string guid in guids)
+                {
+                    string assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                    MonoScript script = AssetDatabase.LoadAssetAtPath<MonoScript>(assetPath);
+                    if (script == null) continue;
+
+                    Type scriptType = script.GetClass();
+                    if (scriptType == null) continue; // Pode ser uma interface ou enum
+
+                    bool isMonoBehaviour = typeof(MonoBehaviour).IsAssignableFrom(scriptType);
+
+                    // Usa a classe utilitária que criamos antes para extrair os métodos!
+                    var (unitMethods, behaviorMethods) = ScriptMethodAnalyzer.CategorizeMethods(scriptType);
+
+                    Debug.Log($"\n[LnD CLI] Analisando Script: {script.name} | É MonoBehaviour? {isMonoBehaviour}");
+
+                    if (isMonoBehaviour)
+                    {
+                        // 1. Gera os testes do ciclo de vida da Unity (Behavior)
+                        foreach (var method in behaviorMethods)
+                        {
+                            Debug.Log($"   -> [Behavior] Gerando teste para: {method}");
+                            await generator.Generate(script, method, PromptType.Behavior);
+                        }
+
+                        // 2. Gera os testes de lógica pura do MonoBehaviour (Uniti)
+                        foreach (var method in unitMethods)
+                        {
+                            Debug.Log($"   -> [Uniti] Gerando teste para: {method}");
+                            await generator.Generate(script, method, PromptType.Uniti);
+                        }
+                    }
+                    else
+                    {
+                        // 3. É um C# puro: Gera os testes de EditMode (Unitieditor)
+                        foreach (var method in unitMethods)
+                        {
+                            Debug.Log($"   -> [Unitieditor] Gerando teste para: {method}");
+                            await generator.Generate(script, method, PromptType.Unitieditor);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                // LIBERA A RECOMPILAÇÃO: Agora que tudo acabou, a Unity pode processar os novos .cs
+                EditorApplication.UnlockReloadAssemblies();
+                AssetDatabase.Refresh();
+                Debug.Log("[LnD CLI] Todos os testes gerados. Recompilando banco de assets...");
+            }
         }
 
         // Helper para ler argumentos do terminal
@@ -53,10 +214,6 @@ namespace LaundryNDishes.CLI
             }
             return null;
         }
-        public static void GenerateTest()
-        {
-            
-        }
-        
+
     }
 }

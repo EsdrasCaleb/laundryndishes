@@ -4,7 +4,7 @@ using UnityEditor;
 using UnityEngine;
 using LaundryNDishes.Data;
 
-namespace LaundryNDishes.UnityData
+namespace LaundryNDishes.UnityCore
 {
 // Podemos usar CreateAssetMenu aqui para facilitar a criação inicial, se quisermos.
     [CreateAssetMenu(fileName = "TestDatabase", menuName = "Laundry & Dishes/Test Database")]

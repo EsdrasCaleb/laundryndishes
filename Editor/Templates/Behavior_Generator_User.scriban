@@ -1,7 +1,5 @@
 To simulate input in Unity, follow this pattern EXACTLY:
 ```csharp
-```csharp
-// Exemplo de como simular input:
 using NUnit.Framework;
 using System.Collections;
 using UnityEngine;
@@ -9,10 +7,10 @@ using UnityEngine.InputSystem;
 using UnityEngine.TestTools;
 
 // 1. The class MUST inherit from InputTestFixture.
-public class MeuTesteDeInput : InputTestFixture
+public class MyInputTest : InputTestFixture
 {
     [UnityTest]
-    public IEnumerator TesteDeExemploComInput()
+    public IEnumerator TestWithInput()
     {
         // 2. Create and add the required virtual device (Keyboard, Mouse, Gamepad).
         var keyboard = InputSystem.AddDevice<Keyboard>();
@@ -34,7 +32,7 @@ Based on the following C# source code of the class:
 {{ sut_class }}
 ``` 
 {{ if sut_related_methods }}
-Contexto adicional: a classe também possui os seguintes métodos:
+Additional context:
 ```csharp
 {{ for method in sut_related_methods }}
 ...

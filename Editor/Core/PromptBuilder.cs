@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
-using LaundryNDishes.UnityData;
+using LaundryNDishes.UnityCore;
 using LaundryNDishes.Data;
 using Scriban;
 using Scriban.Runtime;
@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace LaundryNDishes.Core
 {
-    public enum PromptType { Uniti, Behavior, Integration }
+    public enum PromptType { Uniti, Behavior, Integration, Unitieditor }
 
     public class PromptBuilder
     {
@@ -38,7 +38,7 @@ namespace LaundryNDishes.Core
             return BuildPromptFromTemplates(promptType, "Generator", data);
         }
 
-        public Prompt BuildCorrectionPrompt(PromptType promptType, string code, string errors)
+        public Prompt BuildCorrectionPrompt(string code, string errors)
         {
             var data = new ScriptObject { ["code"] = code, ["errors"] = errors };
             var prompt = new Prompt();

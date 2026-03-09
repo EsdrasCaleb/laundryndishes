@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
-using LaundryNDishes.UnityData;
+using LaundryNDishes.UnityCore;
 using LaundryNDishes.Data;
 using LaundryNDishes.TestRunner;
 using UnityEditor.Compilation;
@@ -72,6 +72,43 @@ namespace LaundryNDishes.Core
                 string intention = await GetIntentionAsync(promptType, classSource, extra);
 
                 // ETAPA 2: Gerar e compilar o código em um loop de tentativas.
+                string folder = _config.PlayTestDestinationFolder;
+                if (promptType == PromptType.Unitieditor)
+                {
+                    folder = _config.EditorTestScriptsFolder;
+                }
+                var generationResult = await GenerateAndCompileCodeAsync(promptType, targetScript, extra, intention,folder);
+                GeneratedTestCode = generationResult.CompiledCode;
+                tempTestPath = generationResult.FilePath;
+                Log($"Teste compilado com sucesso temporariamente em  {tempTestPath}");
+
+                UpdateTestDatabase(targetScript, extra, null, GeneratedTestCode);
+
+            }
+            catch (Exception ex)
+            {
+                Log($"ERRO FATAL: {ex.Message}");
+                TestPassed = false;
+                UpdateTestDatabase(targetScript, extra, false, null);
+            }
+            finally
+            {
+                // ETAPA FINAL: Limpeza do arquivo temporário.
+                CleanupTemporaryFile(tempTestPath);
+            }
+        }
+
+        public async Task GenerateAndTest(MonoScript targetScript, string extra, PromptType promptType)
+        {
+            string tempTestPath = null;
+            try
+            {
+                string classSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
+
+                // ETAPA 1: Obter a intenção do método.
+                string intention = await GetIntentionAsync(promptType, classSource, extra);
+
+                // ETAPA 2: Gerar e compilar o código em um loop de tentativas.
                 var generationResult = await GenerateAndCompileCodeAsync(promptType, targetScript, extra, intention);
                 GeneratedTestCode = generationResult.CompiledCode;
                 tempTestPath = generationResult.FilePath;
@@ -80,12 +117,12 @@ namespace LaundryNDishes.Core
                 TestPassed = await ExecuteTestAsync(GeneratedTestCode, tempTestPath);
 
                 // ETAPA 4: Atualizar o Banco de Dados.
-                UpdateTestDatabase(targetScript, extra, null, GeneratedTestCode);
-                
+                UpdateTestDatabase(targetScript, extra, TestPassed, GeneratedTestCode);
+
                 Log(TestPassed.HasValue && TestPassed.Value
                     ? "5. Teste passou! Processo finalizado com sucesso."
                     : "5. O teste gerado falhou ou não pôde ser executado.");
-                
+
             }
             catch (Exception ex)
             {
@@ -125,7 +162,7 @@ namespace LaundryNDishes.Core
         /// <summary>
         /// ETAPA 2: Entra em um loop para gerar o código e corrigi-lo até que compile.
         /// </summary>
-        public async Task<(string CompiledCode, string FilePath)> GenerateAndCompileCodeAsync(PromptType promptType, MonoScript targetScript, string extra, string initialIntention)
+        public async Task<(string CompiledCode, string FilePath)> GenerateAndCompileCodeAsync(PromptType promptType, MonoScript targetScript, string extra, string initialIntention,string destinationFolder = null)
         {
             string lastGeneratedCode = "";
             string structuredErrors = "";
@@ -138,7 +175,7 @@ namespace LaundryNDishes.Core
 
                 Prompt testPrompt = (i == 0)
                     ? _promptBuilder.BuildGeneratorPrompt(promptType, initialIntention, classSource, null, extra)
-                    : _promptBuilder.BuildCorrectionPrompt(promptType, lastGeneratedCode, structuredErrors);
+                    : _promptBuilder.BuildCorrectionPrompt(lastGeneratedCode, structuredErrors);
 
                 var testRequest = new LLMRequestData { GeneratedPrompt = testPrompt, Config = _config };
                 var testResponse = await _llmService.GetResponseAsync(testRequest);
@@ -150,7 +187,7 @@ namespace LaundryNDishes.Core
                 var checker = new CompilationChecker();
                 // Passa um nome base para o arquivo temporário
                 string tempFileNameBase = $"{targetScript.name}_{extra}";
-                await checker.Run(lastGeneratedCode, tempFileNameBase, _config.PlayTestDestinationFolder);
+                await checker.Run(lastGeneratedCode, tempFileNameBase, destinationFolder??_config.PlayTestDestinationFolder);
 
                 if (!checker.HasErrors)
                 {
@@ -189,13 +226,13 @@ namespace LaundryNDishes.Core
         private void CleanupTemporaryFile(string filePath)
         {
             CurrentStep = GeneratingStep.Finished;
-            
+
             if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
             {
                 AssetDatabase.DeleteAsset(filePath);
                 Log("Arquivo de teste temporário deletado.");
             }
-            
+
         }
 
         /// <summary>
@@ -243,13 +280,13 @@ namespace LaundryNDishes.Core
             }
 
             // 4. Atualiza o estado da entrada (seja ela nova ou existente).
-            testEntry.passedInLastExecution = testPassed.HasValue && testPassed.Value;
+            testEntry.passedInLastExecution = testPassed;
             testEntry.LastEditTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             testEntry.TargetScript = targetScript; // Garante que a referência ao alvo está correta
             testEntry.SutMethod = extra;
 
             // 5. Salva as alterações no ScriptableObject.
-            Log($"Atualizando entrada no banco de dados para '{generatedTestMonoScript.name}'. Resultado: {(testEntry.passedInLastExecution ? "Passou" : "Falhou")}");
+            Log($"Atualizando entrada no banco de dados para '{generatedTestMonoScript.name}'. Resultado: {testEntry.passedInLastExecution}");
             EditorUtility.SetDirty(db);
             AssetDatabase.SaveAssets();
         }

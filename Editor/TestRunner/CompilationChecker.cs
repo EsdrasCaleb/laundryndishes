@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using LaundryNDishes.UnityData;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -29,7 +28,7 @@ namespace LaundryNDishes.TestRunner
         public string TempFilePath { get; private set; }
         public string AssemblyName { get; private set; }
 
-        public async Task Run(string testCode,String filename, String folder)
+        public async Task Run(string testCode, string filename, string folder)
         {
             if (CurrentState != State.Idle)
             {
@@ -39,65 +38,63 @@ namespace LaundryNDishes.TestRunner
 
             CurrentState = State.SavingAndCompiling;
             CompilationErrors = new List<CompilationError>();
+            
+            // Salvamos o arquivo fisicamente. Como o Editor está "Locked", a Unity
+            // não vai tentar importar isso automaticamente para o projeto principal ainda.
             TempFilePath = Path.Combine(folder, $"{filename}_Test.cs");
-            // Criamos o "tradutor" de callback para Task.
             var compilationTaskSource = new TaskCompletionSource<List<CompilationError>>();
-
-            // A função que será chamada quando o evento de compilação disparar.
-            Action<string,CompilerMessage[]> onCompilationFinished = null;
-            onCompilationFinished = (string s, CompilerMessage[] compilerMessages) =>
-            {
-                // 1. Desregistra o evento imediatamente para evitar memory leaks.
-                CompilationPipeline.assemblyCompilationFinished -= onCompilationFinished;
-
-                // 2. Coleta os erros de compilação APENAS do nosso arquivo temporário.
-                var errors = compilerMessages.Where(m => m.type == CompilerMessageType.Error)
-                    .Where(msg => msg.file == TempFilePath)
-                    .Select(msg => new CompilationError { Line = msg.line, Message = msg.message })
-                    .ToList();
-                
-                // 3. Completa a Task, "liberando" o await e passando os erros como resultado.
-                compilationTaskSource.TrySetResult(errors);
-            };
 
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(TempFilePath));
                 await File.WriteAllTextAsync(TempFilePath, testCode);
 
-                // Registra nosso callback para o evento.
-                CompilationPipeline.assemblyCompilationFinished += onCompilationFinished;
+                // --- A MÁGICA ACONTECE AQUI ---
+                // Criamos uma DLL temporária na pasta Temp da Unity (fora dos Assets)
+                string tempDllPath = Path.Combine("Temp", $"{filename}_TempValidation.dll");
                 
-                // Força a Unity a notar o novo arquivo e iniciar a compilação.
-                AssetDatabase.ImportAsset(TempFilePath, ImportAssetOptions.ForceSynchronousImport);
+                // Usamos o AssemblyBuilder para compilar APENAS esse arquivo
+                var assemblyBuilder = new AssemblyBuilder(tempDllPath, new[] { TempFilePath });
+
+                // Evento que dispara quando a compilação isolada termina
+                assemblyBuilder.buildFinished += (string assemblyPath, CompilerMessage[] compilerMessages) =>
+                {
+                    // Filtramos apenas os erros
+                    var errors = compilerMessages
+                        .Where(m => m.type == CompilerMessageType.Error)
+                        .Select(msg => new CompilationError { Line = msg.line, Message = msg.message })
+                        .ToList();
+                    
+                    compilationTaskSource.TrySetResult(errors);
+                };
+
+                // Inicia a compilação em background (NÃO causa Domain Reload)
+                assemblyBuilder.Build();
                 
-                // Opcional: Força uma recarga se a importação não for suficiente para disparar a compilação.
-                // EditorUtility.RequestScriptReload();
-                
-                // Espera aqui até que o callback chame 'TrySetResult'.
+                // Esperamos o callback do AssemblyBuilder
                 CompilationErrors = await compilationTaskSource.Task;
 
                 if (HasErrors)
                 {
-                    // Se houver erros, o arquivo já deve ser limpo.
-                    //AssetDatabase.DeleteAsset(TempFilePath);
+                    // Erros encontrados (a IA vai tentar corrigir graças ao seu loop)
+                    Debug.Log($"[Checker] {CompilationErrors.Count} erro(s) encontrados na validação isolada.");
                 }
                 else
                 {
-                    // Se compilou com sucesso, guarda o nome do assembly.
-                    AssemblyName = CompilationPipeline.GetAssemblyNameFromScriptPath(TempFilePath);
+                    // Sucesso!
+                    AssemblyName = filename; 
                 }
+
+                // Limpa a DLL temporária, pois só precisávamos dela para validar os erros
+                if (File.Exists(tempDllPath)) File.Delete(tempDllPath);
             }
             catch (Exception ex)
             {
                 Debug.LogException(ex);
-                CompilationErrors.Add(new CompilationError { Line = 0, Message = "Uma exceção ocorreu: " + ex.Message });
-                //if (File.Exists(TempFilePath)) AssetDatabase.DeleteAsset(TempFilePath);
+                CompilationErrors.Add(new CompilationError { Line = 0, Message = "Exceção: " + ex.Message });
             }
             finally
             {
-                // Garante que o evento seja desregistrado mesmo se ocorrer uma exceção antes do await.
-                CompilationPipeline.assemblyCompilationFinished -= onCompilationFinished;
                 CurrentState = State.Finished;
             }
         }

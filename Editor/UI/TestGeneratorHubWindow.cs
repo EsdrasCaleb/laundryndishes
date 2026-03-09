@@ -5,7 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using LaundryNDishes.Core;
-using LaundryNDishes.UnityData;
+using LaundryNDishes.UnityCore;
 using LaundryNDishes.Services;
 
 namespace LaundryNDishes.UI
@@ -142,12 +142,12 @@ namespace LaundryNDishes.UI
                 Repaint(); // Força o redesenho da janela para mostrar a mensagem
                 return;
             }
-            
+
             // Inicia o processo
             _isGenerating = true;
             var progressWindow = GetWindow<GenerationProgressWindow>("Test Generation Log");
             progressWindow.Show();
-            
+
             try
             {
                 var config = LnDConfig.Instance;
@@ -161,13 +161,13 @@ namespace LaundryNDishes.UI
                 for (int i = 0; i < methodNames.Count; i++)
                 {
                     string methodNameOrDescription = methodNames[i];
-                    
+
                     // Atualiza o status para cada método
                     _statusMessage = $"({i + 1}/{methodNames.Count}) Gerando teste para: {methodNameOrDescription}...";
                     Repaint();
-                    
+
                     progressWindow.StartMonitoring(generator);
-                    await generator.Generate(_targetScript, methodNameOrDescription, promptType);
+                    await generator.GenerateAndTest(_targetScript, methodNameOrDescription, promptType);
                 }
 
                 _statusMessage = $"Processo finalizado! {methodNames.Count} teste(s) foram processados com sucesso.";
@@ -198,20 +198,12 @@ namespace LaundryNDishes.UI
             var scriptClass = _targetScript.GetClass();
             if (scriptClass == null) return;
 
-            // Popula testes unitários (métodos públicos que não são da Unity)
-            var monoBehaviourMethods = new HashSet<string>(typeof(MonoBehaviour).GetMethods().Select(m => m.Name));
-            _unitTestMethods = scriptClass.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                .Where(m => !m.IsSpecialName && !monoBehaviourMethods.Contains(m.Name))
-                .Select(m => new SelectableMethod(m.Name))
-                .ToList();
+            // Chama o analisador que criamos para fazer o trabalho pesado
+            var (unitMethods, behaviorMethods) = ScriptMethodAnalyzer.CategorizeMethods(scriptClass);
 
-            // Popula testes comportamentais (métodos da Unity)
-            var lifecycleMethods = new[] { "Start", "Awake", "OnEnable", "OnDisable", "Update", "FixedUpdate", "LateUpdate", "OnCollisionEnter", "OnTriggerEnter" /* adicione outros se quiser */ };
-            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
-            _behaviorMethods = lifecycleMethods
-                .Where(m => scriptClass.GetMethod(m, flags) != null)
-                .Select(m => new SelectableMethod(m))
-                .ToList();
+            // Popula as listas da interface (SelectableMethod) usando os nomes retornados
+            _unitTestMethods = unitMethods.Select(name => new SelectableMethod(name)).ToList();
+            _behaviorMethods = behaviorMethods.Select(name => new SelectableMethod(name)).ToList();
         }
     }
 }

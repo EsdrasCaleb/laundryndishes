@@ -6,7 +6,7 @@ using UnityEngine;
 
 
 //TODO separar em dois um geral e um para o Unity
-namespace LaundryNDishes.UnityData
+namespace LaundryNDishes.UnityCore
 {
     public enum LLMProviderType { OpenAIRestServer, LlamaCppDirect, UnitySentis }
 

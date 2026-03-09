@@ -3,7 +3,7 @@ Based on the following C# source code of the class:
 {{ sut_class }}
 ``` 
 {{ if sut_related_methods }}
-Contexto adicional: a classe também possui os seguintes métodos:
+Additional context:
 ```csharp
 {{ for method in sut_related_methods }}
 ...
