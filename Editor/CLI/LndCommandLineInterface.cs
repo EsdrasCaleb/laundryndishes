@@ -155,8 +155,13 @@ namespace LaundryNDishes.CLI
                 // Busca todos os scripts dentro da pasta informada
                 string[] guids = AssetDatabase.FindAssets("t:MonoScript", new[] { folderPath });
 
+                int totalScripts = guids.Length;
+                int currentScriptIndex = 0;
+                
                 foreach (string guid in guids)
                 {
+                    currentScriptIndex++;
+                    
                     string assetPath = AssetDatabase.GUIDToAssetPath(guid);
                     MonoScript script = AssetDatabase.LoadAssetAtPath<MonoScript>(assetPath);
                     if (script == null) continue;
@@ -168,9 +173,15 @@ namespace LaundryNDishes.CLI
 
                     // Usa a classe utilitária que criamos antes para extrair os métodos!
                     var (unitMethods, behaviorMethods) = ScriptMethodAnalyzer.CategorizeMethods(scriptType);
-
-                    Debug.Log($"\n[LnD CLI] Analisando Script: {script.name} | É MonoBehaviour? {isMonoBehaviour}");
-
+                    
+                    // --- INÍCIO DA ALTERAÇÃO: Barra de progresso ASCII no console ---
+                    float progressPercentage = ((float)currentScriptIndex / totalScripts) * 100f;
+                    int filledBars = (int)(progressPercentage / 5f); // 20 barrinhas no total (100 / 5)
+                    string progressBar = new string('#', filledBars).PadRight(20, '-');
+            
+                    Debug.Log($"\n[LnD CLI] PROGRESSO: [{progressBar}] {progressPercentage:F1}% ({currentScriptIndex}/{totalScripts})");
+                    Debug.Log($"[LnD CLI] Analisando Script: {script.name} | É MonoBehaviour? {isMonoBehaviour}");
+                    // --- FIM DA ALTERAÇÃO ---
                     if (isMonoBehaviour)
                     {
                         // 1. Gera os testes do ciclo de vida da Unity (Behavior)

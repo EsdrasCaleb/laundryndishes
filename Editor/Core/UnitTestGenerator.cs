@@ -292,8 +292,6 @@ namespace LaundryNDishes.Core
             MonoScript targetScript, string extra, string initialIntention, string destinationFolder)        {
             string lastGeneratedCode = "";
             string structuredErrors = "";
-            Debug.Log(targetScript);
-            Debug.Log(AssetDatabase.GetAssetPath(targetScript));
             string rawClassSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
             
             string reducedClassSource = GetReducedClassSource(rawClassSource, extra);
