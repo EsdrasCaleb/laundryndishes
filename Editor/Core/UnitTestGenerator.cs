@@ -60,6 +60,11 @@ namespace LaundryNDishes.Core
         /// </summary>
         public async Task Generate(MonoScript targetScript, string extra, PromptType promptType, string csvPath = null)
         {
+            if (DoesTestExist(targetScript, extra))
+            {
+                Log("Teste ja existe exclua ele para gerar um novo");
+                return;
+            }
             var stopwatch = Stopwatch.StartNew();
             int attempts = 0; 
             int corrections = 0;
@@ -125,6 +130,11 @@ namespace LaundryNDishes.Core
         /// </summary>
         public async Task GenerateAndTest(MonoScript targetScript, string extra, PromptType promptType)
         {
+            if (DoesTestExist(targetScript, extra))
+            {
+                Log("Teste ja existe exclua ele para gerar um novo");
+                return;
+            }
             try
             {
                 string classSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
@@ -167,6 +177,23 @@ namespace LaundryNDishes.Core
             {
                 CurrentStep = GeneratingStep.Finished;
             }
+        }
+        
+        /// <summary>
+        /// Checa se já existe um teste gerado válido para a SUT e Método especificados.
+        /// </summary>
+        private bool DoesTestExist(MonoScript targetScript, string method)
+        {
+            var db = TestDatabase.Instance;
+            if (db == null || db.AllTests == null) return false;
+
+            // Procura um teste onde a SUT bate, o Método bate, e o arquivo físico (GeneratedTestScript) ainda existe
+            bool exists = db.AllTests.Any(t => 
+                t.TargetScript == targetScript && 
+                t.SutMethod == method && 
+                t.GeneratedTestScript != null);
+
+            return exists;
         }
 
         #region Helper Methods - As Etapas da Geração
