@@ -61,7 +61,7 @@ namespace LaundryNDishes.Core
         public async Task Generate(MonoScript targetScript, string extra, PromptType promptType, string csvPath = null)
         {
             var stopwatch = Stopwatch.StartNew();
-            int attempts; 
+            int attempts = 0; 
             int corrections = 0;
             bool generated = false;
             for (int i = 0; i < _config.MaxAttempts; i++)
@@ -114,7 +114,7 @@ namespace LaundryNDishes.Core
                 Log($"Nao gerou com todas as {_config.MaxAttempts} tentativas");
                 stopwatch.Stop();
                 // SUTClass, SUTMethod, TestType, TestFile, NumberOfCorrections, TimeToGenerate
-                string csvLine = $"{targetScript.name},{extra},{promptType},-,{corrections},{stopwatch.ElapsedMilliseconds},FAILURE\n";
+                string csvLine = $"{targetScript.name},{extra},{promptType},-,{corrections},{attempts},{stopwatch.ElapsedMilliseconds},FAILURE\n";
                 File.AppendAllText(csvPath, csvLine); // Append garante que adiciona no final
             }
         }
@@ -208,13 +208,26 @@ namespace LaundryNDishes.Core
 
                 lastGeneratedCode = CodeParser.ExtractTestCode(testResponse.Content);
                 if (string.IsNullOrEmpty(lastGeneratedCode)) continue;
-
+                
                 var checker = new CompilationChecker();
                 string tempFileNameBase = $"{targetScript.name}_{extra}";
                 
                 // O validador usa a pasta Temp internamente, o 'destinationFolder' só serve pro nome do arquivo (se ele usar).
-                await checker.Run(lastGeneratedCode, tempFileNameBase, destinationFolder);
+                await checker.Run(lastGeneratedCode, tempFileNameBase, destinationFolder,_config,promptType==PromptType.Unitieditor);
 
+                bool hasReimplementedSUT = Regex.IsMatch(
+                    lastGeneratedCode, 
+                    $@"\b(class|struct|interface|enum)\s+{targetScript.name}\b"
+                );
+
+                if (hasReimplementedSUT)
+                {
+                    Log($"[Validação] A IA tentou reimplementar a classe SUT '{targetScript.name}'. Rejeitando...");
+                    // Força a mensagem de erro para que o LLM entenda o que não deve fazer no CorrectionPrompt
+                    structuredErrors = $"ERRO LÓGICO: Você declarou a classe '{targetScript.name}' dentro do arquivo de teste. Não reimplemente ou moke a classe original. Apenas crie a classe de testes.";
+                    continue; // Pula a compilação e vai direto para a próxima tentativa (Correção)
+                }
+                
                 if (!checker.HasErrors)
                 {
                     Log("Código validado com sucesso na pasta temporária!");

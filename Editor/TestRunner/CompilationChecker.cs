@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using LaundryNDishes.UnityCore;
 using UnityEditor.Compilation;
 using UnityEngine;
 
@@ -17,6 +18,9 @@ namespace LaundryNDishes.TestRunner
 
     public class CompilationChecker
     {
+        [Serializable]
+        private class AsmDefData { public string name; }
+        
         public enum State { Idle, SavingAndCompiling, Finished }
         public State CurrentState { get; private set; } = State.Idle;
         
@@ -30,7 +34,7 @@ namespace LaundryNDishes.TestRunner
 
         // O parâmetro 'folder' foi mantido na assinatura para não quebrar o código
         // que chama essa função, mas ele será ignorado aqui dentro.
-        public async Task Run(string testCode, string filename, string folder)
+        public async Task Run(string testCode, string filename, string folder, LnDConfig config, bool isEditorTest)        
         {
             if (CurrentState != State.Idle)
             {
@@ -60,23 +64,34 @@ namespace LaundryNDishes.TestRunner
                 // 3. Usa o AssemblyBuilder apontando para o arquivo rascunho
                 var assemblyBuilder = new AssemblyBuilder(tempDllPath, new[] { tempCsPath });
                 
-                assemblyBuilder.flags = AssemblyBuilderFlags.EditorAssembly;
-
-                // Coleta todas as DLLs (UnityEngine, NUnit, e os seus próprios scripts como o "Ball")
                 var references = new HashSet<string>();
-                foreach (var asm in CompilationPipeline.GetAssemblies())
+                var allAssemblies = CompilationPipeline.GetAssemblies();
+
+                // Função local para achar o assembly compilado correspondente ao .asmdef e adicionar as refs
+                void AddAssemblyAndItsReferences(UnityEditorInternal.AssemblyDefinitionAsset asmDefAsset)
                 {
-                    // Adiciona os assemblies do seu projeto (ex: Assembly-CSharp.dll onde o Ball está)
-                    references.Add(asm.outputPath);
-                    
-                    // Adiciona as referências base da Unity (ex: UnityEngine.CoreModule, nunit.framework)
-                    foreach (var refPath in asm.compiledAssemblyReferences)
+                    if (asmDefAsset == null) return;
+                
+                    string targetName = JsonUtility.FromJson<AsmDefData>(asmDefAsset.text).name;
+                        var targetAsm = allAssemblies.FirstOrDefault(a => a.name == targetName);
+                
+                    if (targetAsm != null)
                     {
-                        references.Add(refPath);
+                        references.Add(targetAsm.outputPath); // Adiciona a DLL do próprio assembly
+                        foreach (var refPath in targetAsm.compiledAssemblyReferences)
+                        {
+                            references.Add(refPath); // Adiciona as dependências dele (UnityEngine, etc)
+                        }
                     }
                 }
 
-                // Injeta todas as dependências no nosso compilador isolado
+                // Adiciona as referências do Projeto Principal (onde fica o script testado)
+                AddAssemblyAndItsReferences(config.MainProjectAssembly);
+
+                // Adiciona as referências do Projeto de Testes correto (onde estão os utilitários de teste e NUnit)
+                var testAssemblyTarget = isEditorTest ? config.EditorTestAssembly : config.PlayModeTestAssembly;
+                AddAssemblyAndItsReferences(testAssemblyTarget);
+
                 assemblyBuilder.additionalReferences = references.ToArray();
 
                 assemblyBuilder.buildFinished += (string assemblyPath, CompilerMessage[] compilerMessages) =>

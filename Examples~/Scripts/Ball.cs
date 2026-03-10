@@ -35,9 +35,4 @@ public class Ball : MonoBehaviour
         transform.position = Vector3.zero;
         isLaunched = false;
     }
-
-    void OnCollisionEnter2D(Collision2D collision)
-    {
-        // Adicione lógica adicional se necessário (ex: som ao bater)
-    }
 }
