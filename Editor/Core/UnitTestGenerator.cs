@@ -77,7 +77,7 @@ namespace LaundryNDishes.Core
                 try
                 {
                     string classSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
-
+        
                     // ETAPA 1: Obter a intenção do método.
                     string intention = await GetIntentionAsync(promptType, classSource, extra);
 
@@ -292,6 +292,8 @@ namespace LaundryNDishes.Core
             MonoScript targetScript, string extra, string initialIntention, string destinationFolder)        {
             string lastGeneratedCode = "";
             string structuredErrors = "";
+            Debug.Log(targetScript);
+            Debug.Log(AssetDatabase.GetAssetPath(targetScript));
             string rawClassSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
             
             string reducedClassSource = GetReducedClassSource(rawClassSource, extra);
