@@ -104,6 +104,7 @@ namespace LaundryNDishes.Core
                 }
                 catch (Exception ex)
                 {
+                    corrections += _config.MaxCorrections;
                     Log($"Erro na geração: {ex.Message}");
                 }
             }
