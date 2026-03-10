@@ -167,7 +167,7 @@ namespace LaundryNDishes.UI
                     Repaint();
 
                     progressWindow.StartMonitoring(generator);
-                    await generator.GenerateAndTest(_targetScript, methodNameOrDescription, promptType);
+                    await generator.Generate(_targetScript, methodNameOrDescription, promptType);
                 }
 
                 _statusMessage = $"Processo finalizado! {methodNames.Count} teste(s) foram processados com sucesso.";

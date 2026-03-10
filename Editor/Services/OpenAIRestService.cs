@@ -25,7 +25,7 @@ namespace LaundryNDishes.Services
         private static readonly HttpClient HttpClient = new HttpClient();
 
         // O único método público, que segue o contrato da interface.
-        public async Task<LLMResponse> GetResponseAsync(LLMRequestData requestData)
+        public async Task<LLMResponse> GetResponseAsync(LLMRequestData requestData, bool debug=false)
         {
             try
             {
@@ -44,7 +44,10 @@ namespace LaundryNDishes.Services
                 string jsonRequestBody = JsonUtility.ToJson(requestBody);
 
                 var content = new StringContent(jsonRequestBody, Encoding.UTF8, "application/json");
-
+                if (debug)
+                {
+                    Debug.Log($"Request: \n{jsonRequestBody}");
+                }
                 // 3. Configurar e enviar a requisição usando um HttpRequestMessage para mais controle.
                 using (var requestMessage = new HttpRequestMessage(HttpMethod.Post, config.LlmServerUrl))
                 {
@@ -57,6 +60,10 @@ namespace LaundryNDishes.Services
 
                     if (response.IsSuccessStatusCode)
                     {
+                        if (debug)
+                        {
+                            Debug.Log($"Response: \n{responseData}");
+                        }
                         // 4. Deserializar a resposta e extrair o conteúdo.
                         var chatResponse = JsonUtility.FromJson<ChatResponse>(responseData);
                         return new LLMResponse

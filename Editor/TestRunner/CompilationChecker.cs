@@ -112,7 +112,8 @@ namespace LaundryNDishes.TestRunner
 
                 if (HasErrors)
                 {
-                    Debug.Log($"[Checker] {CompilationErrors.Count} erro(s) encontrados na validação de {filename}.");
+                    Debug.Log($"[Checker] {CompilationErrors.Count} erro(s) encontrados na validação de {filename}.\n " +
+                              $"{string.Join('\n',CompilationErrors)}");
                 }
                 else
                 {

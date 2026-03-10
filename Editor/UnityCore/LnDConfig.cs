@@ -71,6 +71,7 @@ namespace LaundryNDishes.UnityCore
         public TestDatabase ActiveDatabase { get; private set; }
         public int MaxCorrections { get; set; }
         public int MaxAttempts { get; set; }
+        public bool ShowAllLLmComm { get; set; }
 
         // --- Chaves de Persistência ---
 
@@ -101,6 +102,7 @@ namespace LaundryNDishes.UnityCore
             CustomTemplatesFolder = EditorPrefs.GetString(KeyPrefix + "TemplateFolder", string.Empty);
             MaxCorrections = 5;
             MaxAttempts = 5;
+            ShowAllLLmComm = true;
             string dbPath = EditorPrefs.GetString(ActiveDatabasePathKey, string.Empty);
             if (!string.IsNullOrEmpty(dbPath))
             {

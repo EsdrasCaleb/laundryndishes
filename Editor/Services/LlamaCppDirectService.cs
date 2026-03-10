@@ -7,7 +7,7 @@ namespace LaundryNDishes
 
     public class LlamaCppDirectService : ILLMService
     {
-        public Task<LLMResponse> GetResponseAsync(LLMRequestData requestData)
+        public Task<LLMResponse> GetResponseAsync(LLMRequestData requestData, bool debug=false)
         {
             // TODO: Implementar a chamada direta à biblioteca do llama.cpp via C++ Interop (P/Invoke).
             // Esta é uma tarefa complexa que envolve criar "bindings" para a biblioteca C++.

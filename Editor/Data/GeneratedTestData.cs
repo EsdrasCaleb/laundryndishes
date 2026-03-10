@@ -14,6 +14,9 @@ namespace LaundryNDishes.Data
         [Tooltip("O método (System Under Test) para o qual o teste foi gerado.")]
         public string SutMethod;
 
+        [Tooltip("O caminho relativo do arquivo de teste gerado.")]
+        public string GeneratedTestFilePath;
+        
         [Tooltip("O arquivo de script de teste que foi gerado. A referência não quebra se o arquivo for renomeado.")]
         public MonoScript GeneratedTestScript;
 

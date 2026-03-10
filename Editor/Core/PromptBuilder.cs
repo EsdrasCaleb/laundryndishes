@@ -50,8 +50,6 @@ namespace LaundryNDishes.Core
 
         private Prompt BuildPromptFromTemplates(PromptType promptType, string baseName, ScriptObject data)
         {
-            var prompt = new Prompt();
-            
             // Monta o nome do arquivo com o prefixo do tipo de prompt.
             string systemTemplate = $"{promptType.ToString()}_{baseName}_System.scriban";
             string userTemplate = $"{promptType.ToString()}_{baseName}_User.scriban";
@@ -64,7 +62,7 @@ namespace LaundryNDishes.Core
         {
             string userTemplateString = RenderTemplate(userTemplate, data);
             string systemTemplateString = null;
-            if (string.IsNullOrEmpty(systemTemplate))
+            if (!string.IsNullOrEmpty(systemTemplate))
             {
                 systemTemplateString = RenderTemplate(systemTemplate, data);
             }

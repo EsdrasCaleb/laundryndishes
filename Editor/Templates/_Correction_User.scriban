@@ -1,23 +1,26 @@
-The previously generated C# code for a Unity Test Framework (UTF) failed to compile.
+The previously generated Unity Test Framework code failed to compile.
 
 CODE WITH ERRORS:
-```csharp
-{{ code }}
-```
-COMPILATION ERRORS REPORTED:
+{{code}}
 
-{{ errors }}
+COMPILATION ERRORS:
+{{errors}}
 
-Your task is to analyze the errors and fix the code so that it compiles successfully.
+Your task is to fix the code so it compiles.
 
-RULES:
+Rules:
 
-Fix ONLY syntax and compilation errors.
+Fix compilation errors.
 
-DO NOT change the main logic or assertions of the test unless strictly necessary to fix an error.
+Do not call Unity event methods directly.  
+If the code calls lifecycle, collision, trigger, or update methods, replace this with a proper Unity simulation using GameObjects, colliders, rigidbodies, or frame updates.
 
-Maintain the original intent of the test.
+Do not invent properties or methods that do not exist in the provided class code.
 
-The response should contain ONLY the complete and corrected C# code, within a "```csharp```". block. 
+Preserve the original test intent.
 
-Do not include explanations of the fixes.
+Keep the assertions whenever possible.
+
+Return only the corrected C# code.
+
+Return a single ```csharp``` code block.

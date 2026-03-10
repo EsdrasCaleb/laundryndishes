@@ -8,6 +8,8 @@ using UnityEditor;
 using LaundryNDishes.UnityCore;
 using LaundryNDishes.Data;
 using LaundryNDishes.TestRunner;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using UnityEditor.Compilation;
 using Debug = UnityEngine.Debug;
 
@@ -197,14 +199,84 @@ namespace LaundryNDishes.Core
         }
 
         #region Helper Methods - As Etapas da Geração
+        
+        public string GetReducedClassSource(string fullClassSource, string methodName)
+        {
+            try
+            {
+                // 1. Transforma o texto em uma Árvore Sintática do Roslyn
+                SyntaxTree tree = CSharpSyntaxTree.ParseText(fullClassSource);
+                SyntaxNode root = tree.GetRoot();
 
+                // 2. Aplica o nosso podador
+                var reducer = new SUTContextReducer(methodName);
+                SyntaxNode reducedRoot = reducer.Visit(root);
+
+                // 3. Devolve o código limpo e menor
+                return reducedRoot.ToFullString();
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"[Roslyn] Falha ao reduzir código da SUT. Usando o original. Erro: {ex.Message}");
+                return fullClassSource; // Fallback de segurança
+            }
+        }
+        
+        /// <summary>
+        /// Busca arquivos .cs no projeto (ignorando pastas de teste e ThirdParty) 
+        /// que possuam uma chamada para o método da SUT.
+        /// </summary>
+        private string[] FindRelatedMethodsContext(string sutClassName, string methodName)
+        {
+            // Limpa o nome do método caso tenha vindo com parênteses, ex: "Pular()" -> "Pular"
+            string cleanMethodName = methodName.Split('(')[0].Trim();
+            
+            // Regex básico para achar "Sut.Metodo" ou apenas "Metodo" (pode gerar falsos positivos, mas serve ao propósito de contexto)
+            string searchPattern = $@"\b{cleanMethodName}\s*\("; 
+            
+            var relatedContexts = new System.Collections.Generic.List<string>();
+            
+            // Pega todos os scripts C# dentro de Assets, ignorando pastas comuns de terceiros e a própria pasta de testes
+            string[] allScripts = AssetDatabase.FindAssets("t:MonoScript")
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Where(path => path.EndsWith(".cs") 
+                               && !path.Contains("/ThirdParty/") 
+                               && !path.Contains("/Plugins/")
+                               && !path.Contains(sutClassName)) // Ignora a própria SUT
+                .ToArray();
+
+            foreach (string path in allScripts)
+            {
+                string content = File.ReadAllText(path);
+                if (Regex.IsMatch(content, searchPattern))
+                {
+                    // Pega o nome do arquivo/classe que fez a chamada
+                    string callerClass = System.IO.Path.GetFileNameWithoutExtension(path);
+                    
+                    // Extrai um fragmento do código (aproximadamente 100 caracteres ao redor da chamada)
+                    // para dar contexto ao LLM sobre COMO o método está sendo usado lá fora.
+                    var match = Regex.Match(content, searchPattern);
+                    int startIndex = Math.Max(0, match.Index - 50);
+                    int length = Math.Min(content.Length - startIndex, 150);
+                    string snippet = content.Substring(startIndex, length).Replace("\n", " ").Trim();
+
+                    relatedContexts.Add($"Class: {callerClass} | Usage: ...{snippet}...");
+                    
+                    // Limita a 3 ou 4 arquivos no máximo para não explodir a janela de contexto do LLM
+                    if (relatedContexts.Count >= 3) break;
+                }
+            }
+
+            return relatedContexts.ToArray();
+        }
+        
         public async Task<string> GetIntentionAsync(PromptType promptType, string classSource, string extra)
         {
             CurrentStep = GeneratingStep.GettingIntention;
             Log("1. Gerando intenção do método...");
             Prompt intentionPrompt = _promptBuilder.BuildIntentionPrompt(promptType, classSource, null, extra);
             var intentionRequest = new LLMRequestData { GeneratedPrompt = intentionPrompt, Config = _config };
-            var intentionResponse = await _llmService.GetResponseAsync(intentionRequest);
+            var intentionResponse = await _llmService.GetResponseAsync(intentionRequest,_config.ShowAllLLmComm);
 
             if (!intentionResponse.Success)
                 throw new Exception("Falha ao obter a intenção: " + intentionResponse.ErrorMessage);
@@ -216,22 +288,29 @@ namespace LaundryNDishes.Core
         /// <summary>
         /// ETAPA 2: Retorna APENAS o código como string. A compilação acontece isolada na Temp.
         /// </summary>
-        public async Task<(string Code, int Corrections)> GenerateAndCompileCodeAsync(PromptType promptType, MonoScript targetScript, string extra, string initialIntention, string destinationFolder)        {
+        public async Task<(string Code, int Corrections)> GenerateAndCompileCodeAsync(PromptType promptType, 
+            MonoScript targetScript, string extra, string initialIntention, string destinationFolder)        {
             string lastGeneratedCode = "";
             string structuredErrors = "";
-            string classSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
+            string rawClassSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
+            
+            string reducedClassSource = GetReducedClassSource(rawClassSource, extra);
 
+            // 2. Busca referências simples pelo projeto (quem chama o método)
+            string[] relatedMethods = FindRelatedMethodsContext(targetScript.name, extra);
+            Debug.Log(string.Join("\n...\n",relatedMethods));
             for (int i = 0; i < _config.MaxCorrections; i++)
             {
                 CurrentStep = (i == 0) ? GeneratingStep.GeneratingCode : GeneratingStep.CorrectingCode;
                 Log($"2.{i + 1}. {(i == 0 ? "Gerando" : "Corrigindo")} código de teste (tentativa {i + 1})...");
 
                 Prompt testPrompt = (i == 0)
-                    ? _promptBuilder.BuildGeneratorPrompt(promptType, initialIntention, classSource, null, extra)
+                    // Passamos o 'reducedClassSource' no lugar do código original e o 'relatedMethods' no lugar do null
+                    ? _promptBuilder.BuildGeneratorPrompt(promptType, initialIntention, reducedClassSource, relatedMethods, extra)
                     : _promptBuilder.BuildCorrectionPrompt(lastGeneratedCode, structuredErrors);
 
                 var testRequest = new LLMRequestData { GeneratedPrompt = testPrompt, Config = _config };
-                var testResponse = await _llmService.GetResponseAsync(testRequest);
+                var testResponse = await _llmService.GetResponseAsync(testRequest,_config.ShowAllLLmComm);
                 if (!testResponse.Success) throw new Exception("Falha ao gerar o código: " + testResponse.ErrorMessage);
 
                 lastGeneratedCode = CodeParser.ExtractTestCode(testResponse.Content);
@@ -298,11 +377,7 @@ namespace LaundryNDishes.Core
             Log("4. Atualizando o banco de dados...");
 
             var db = TestDatabase.Instance;
-            if (db == null)
-            {
-                Log("ERRO: Não foi possível encontrar o TestDatabase para salvar o resultado.");
-                return;
-            }
+            if (db == null) return;
 
             if (string.IsNullOrEmpty(generatedCode) || string.IsNullOrEmpty(finalPath))
             {
@@ -310,28 +385,21 @@ namespace LaundryNDishes.Core
                 return;
             }
 
-            var generatedTestMonoScript = AssetDatabase.LoadAssetAtPath<MonoScript>(finalPath);
-            if (generatedTestMonoScript == null)
-            {
-                Log($"ERRO: Falha ao carregar o MonoScript de '{finalPath}'. A atualização foi abortada.");
-                return;
-            }
-
-            var testEntry = db.AllTests.FirstOrDefault(t => t.GeneratedTestScript == generatedTestMonoScript);
+            // Procura o teste não mais pelo MonoScript gerado, mas pela dupla: Script Alvo + Método Alvo
+            var testEntry = db.AllTests.FirstOrDefault(t => t.TargetScript == targetScript && t.SutMethod == extra);
 
             if (testEntry == null)
             {
                 testEntry = new GeneratedTestData(targetScript, extra);
-                testEntry.GeneratedTestScript = generatedTestMonoScript;
                 db.AllTests.Add(testEntry);
             }
 
+            // Atualiza os dados usando apenas o caminho da string!
+            testEntry.GeneratedTestFilePath = finalPath; 
             testEntry.passedInLastExecution = testPassed;
             testEntry.LastEditTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            testEntry.TargetScript = targetScript; 
-            testEntry.SutMethod = extra;
 
-            Log($"Atualizando entrada no banco de dados para '{generatedTestMonoScript.name}'. Resultado: {testEntry.passedInLastExecution}");
+            Log($"Atualizando entrada no banco para o arquivo '{finalPath}'.");
             EditorUtility.SetDirty(db);
             AssetDatabase.SaveAssets();
         }

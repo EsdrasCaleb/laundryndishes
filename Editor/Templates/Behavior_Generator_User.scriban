@@ -1,57 +1,41 @@
-To simulate input in Unity, follow this pattern EXACTLY:
-```csharp
-using NUnit.Framework;
-using System.Collections;
-using UnityEngine;
-using UnityEngine.InputSystem;
-using UnityEngine.TestTools;
+You will generate a Unity Test Framework Play Mode test.
 
-// 1. The class MUST inherit from InputTestFixture.
-public class MyInputTest : InputTestFixture
-{
-    [UnityTest]
-    public IEnumerator TestWithInput()
-    {
-        // 2. Create and add the required virtual device (Keyboard, Mouse, Gamepad).
-        var keyboard = InputSystem.AddDevice<Keyboard>();
+The target is a Unity event method from a MonoBehaviour class.
 
-        // 3. Simulate the action on the device (e.g. pressing the 'W' key).
-        Press(keyboard.wKey);
+Class source code:
 
-       // 4. WAIT A FRAME for Unity to process the input.
-        yield return null; 
-
-        // 5. Check the result of the action in your game object.
-        // Assert.IsTrue(player.isMovingForward);
-    }
-}
-```
-
-Based on the following C# source code of the class:
 ```csharp
 {{ sut_class }}
-``` 
+````
+
 {{ if sut_related_methods }}
-Additional context:
+Additional methods for context:
+
 ```csharp
 {{ for method in sut_related_methods }}
-...
 {{ method }}
 {{ end }}
 ```
+
 {{ end }}
-Your task is to generate a complete unit test using the Unity Test Framework (UTF) for the {{ extra }} method.
 
-The test must specifically validate the following intent: "{{ intention }}".
+Target method:
+{{ extra }}
 
-RULES:
+Test objective:
+{{ intention }}
 
-Use UTF's [Test] or [UnityTest] attributes when appropriate.
+Requirements:
 
-Include the required using statements at the top of the file.
+Use the Unity Test Framework.
 
-The test class must be public and follow naming conventions (e.g., TestsClassName).
+Include all required using statements.
 
-The response should contain ONLY the complete C# code. Do not include any explanations, introductions, or any text outside the code block.
+The test class must be public and follow the naming pattern:
+Tests<ClassName>.
 
-The code must be inside a "```csharp```" block.
+The response must contain only the complete C# test code.
+
+Do not include explanations or text outside the code.
+
+Return a single csharp code block.
