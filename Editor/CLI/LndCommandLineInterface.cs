@@ -145,7 +145,7 @@ namespace LaundryNDishes.CLI
             
             if (!string.IsNullOrEmpty(csvPath) && !File.Exists(csvPath))
             {
-                File.WriteAllText(csvPath, "SUTClass,SUTMethod,TestType,TestFile,NumberOfCorrections,TimeToGenerate(ms),Status\n");
+                File.WriteAllText(csvPath, "SUTClass,SUTMethod,TestType,TestFile,NumberOfCorrections,Attempts,TimeToGenerate(ms),Status\n");
             }
             // BLOQUEIA A RECOMPILAÇÃO: Impede a Unity de travar durante o loop ao criar novos arquivos
             EditorApplication.LockReloadAssemblies();

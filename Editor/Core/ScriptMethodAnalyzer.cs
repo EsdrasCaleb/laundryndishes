@@ -10,9 +10,42 @@ namespace LaundryNDishes.Core // Ajuste para o namespace correto do seu projeto
     {
         // Centralizamos a lista de métodos do Unity aqui. Fica mais fácil dar manutenção depois.
         private static readonly string[] UnityLifecycleMethods = { 
-            "Awake", "Start", "OnEnable", "OnDisable", "Update", 
-            "FixedUpdate", "LateUpdate", "OnCollisionEnter", "OnTriggerEnter",
-            "OnDestroy", "OnGUI" 
+            // Inicialização e Ciclo de Vida
+            "Awake", "Start", "OnEnable", "OnDisable", "OnDestroy", "Reset",
+
+            // Updates
+            "Update", "FixedUpdate", "LateUpdate",
+
+            // Física 3D
+            "OnCollisionEnter", "OnCollisionStay", "OnCollisionExit",
+            "OnTriggerEnter", "OnTriggerStay", "OnTriggerExit",
+
+            // Física 2D
+            "OnCollisionEnter2D", "OnCollisionStay2D", "OnCollisionExit2D",
+            "OnTriggerEnter2D", "OnTriggerStay2D", "OnTriggerExit2D",
+
+            // Eventos de Mouse (Built-in)
+            "OnMouseDown", "OnMouseDrag", "OnMouseEnter", "OnMouseExit", 
+            "OnMouseOver", "OnMouseUp", "OnMouseUpAsButton",
+
+            // Renderização e GUI
+            "OnGUI", "OnDrawGizmos", "OnDrawGizmosSelected", 
+            "OnPreCull", "OnPreRender", "OnPostRender", 
+            "OnRenderImage", "OnRenderObject", "OnWillRenderObject",
+
+            // Aplicação e Editor
+            "OnApplicationFocus", "OnApplicationPause", "OnApplicationQuit", "OnValidate",
+
+            // Animação e Partículas
+            "OnAnimatorIK", "OnAnimatorMove",
+            "OnParticleCollision", "OnParticleSystemStopped", "OnParticleTrigger", "OnParticleUpdateJobScheduled",
+
+            // Transforms e UI
+            "OnTransformChildrenChanged", "OnTransformParentChanged",
+            "OnBeforeTransformParentChanged", "OnRectTransformDimensionsChange", "OnCanvasGroupChanged",
+
+            // Áudio
+            "OnAudioFilterRead"
         };
 
         /// <summary>

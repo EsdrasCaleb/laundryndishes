@@ -70,6 +70,7 @@ namespace LaundryNDishes.UnityCore
         public string CustomTemplatesFolder { get; set; }
         public TestDatabase ActiveDatabase { get; private set; }
         public int MaxCorrections { get; set; }
+        public int MaxAttempts { get; set; }
 
         // --- Chaves de Persistência ---
 
@@ -98,7 +99,8 @@ namespace LaundryNDishes.UnityCore
             PlayModeTestAssembly = LoadAsmdefFromPath(EditorPrefs.GetString(KeyPrefix + "PlayModeTestAssemblyGuid", string.Empty));
             EditorTestAssembly = LoadAsmdefFromPath(EditorPrefs.GetString(KeyPrefix + "EditorTestAssemblyGuid", string.Empty));
             CustomTemplatesFolder = EditorPrefs.GetString(KeyPrefix + "TemplateFolder", string.Empty);
-            MaxCorrections = 10;
+            MaxCorrections = 5;
+            MaxAttempts = 5;
             string dbPath = EditorPrefs.GetString(ActiveDatabasePathKey, string.Empty);
             if (!string.IsNullOrEmpty(dbPath))
             {

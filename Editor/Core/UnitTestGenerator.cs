@@ -61,52 +61,61 @@ namespace LaundryNDishes.Core
         public async Task Generate(MonoScript targetScript, string extra, PromptType promptType, string csvPath = null)
         {
             var stopwatch = Stopwatch.StartNew();
-            int correctionsMade = 0; // <-- NOVO: Variável para guardar as correções
-            try
+            int attempts; 
+            int corrections = 0;
+            bool generated = false;
+            for (int i = 0; i < _config.MaxAttempts; i++)
             {
-                string classSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
-
-                // ETAPA 1: Obter a intenção do método.
-                string intention = await GetIntentionAsync(promptType, classSource, extra);
-
-                // ETAPA 2: Gerar e validar o código (na pasta Temp).
-                string folder = promptType == PromptType.Unitieditor 
-                    ? _config.EditorTestScriptsFolder 
-                    : _config.PlayTestDestinationFolder;
-
-                var (rawCompiledCode, attempts) = await GenerateAndCompileCodeAsync(promptType, targetScript, extra, intention, folder);
-                
-                // ETAPA 3: Salvar o arquivo final. (Ele renomeia a classe para bater com o nome do arquivo).
-                CurrentStep = GeneratingStep.SavingFile;
-                string finalPath = SaveFinalTestFile(rawCompiledCode, targetScript, extra, folder, out string finalCode);
-                GeneratedTestCode = finalCode;
-
-                // ETAPA 4: Atualiza Banco de Dados (Passamos 'true' pois o arquivo compilou e salvou).
-                UpdateTestDatabase(targetScript, extra, true, GeneratedTestCode, finalPath);
-                stopwatch.Stop();
-                if (!string.IsNullOrEmpty(csvPath))
+                attempts = i;
+                try
                 {
-                    // SUTClass, SUTMethod, TestType, TestFile, NumberOfCorrections, TimeToGenerate
-                    string csvLine = $"{targetScript.name},{extra},{promptType},{finalPath},{correctionsMade},{stopwatch.ElapsedMilliseconds},SUCESS\n";
-                    File.AppendAllText(csvPath, csvLine); // Append garante que adiciona no final
-                }
-            }
-            catch (Exception ex)
-            {
-                Log($"ERRO FATAL: {ex.Message}");
-                TestPassed = false;
-                UpdateTestDatabase(targetScript, extra, false, null, null);
-                if (!string.IsNullOrEmpty(csvPath))
-                {
+                    string classSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
+
+                    // ETAPA 1: Obter a intenção do método.
+                    string intention = await GetIntentionAsync(promptType, classSource, extra);
+
+                    // ETAPA 2: Gerar e validar o código (na pasta Temp).
+                    string folder = promptType == PromptType.Unitieditor
+                        ? _config.EditorTestScriptsFolder
+                        : _config.PlayTestDestinationFolder;
+
+                    var (rawCompiledCode, correctionsMade) =
+                        await GenerateAndCompileCodeAsync(promptType, targetScript, extra, intention, folder);
+                    corrections += correctionsMade;
+                    // ETAPA 3: Salvar o arquivo final. (Ele renomeia a classe para bater com o nome do arquivo).
+                    CurrentStep = GeneratingStep.SavingFile;
+                    string finalPath = SaveFinalTestFile(rawCompiledCode, targetScript, extra, folder,
+                        out string finalCode);
+                    GeneratedTestCode = finalCode;
+
+                    // ETAPA 4: Atualiza Banco de Dados (Passamos 'true' pois o arquivo compilou e salvou).
+                    UpdateTestDatabase(targetScript, extra, true, GeneratedTestCode, finalPath);
                     stopwatch.Stop();
-                    // SUTClass, SUTMethod, TestType, TestFile, NumberOfCorrections, TimeToGenerate
-                    string csvLine = $"{targetScript.name},{extra},{promptType},-,{correctionsMade},{stopwatch.ElapsedMilliseconds},FAILURE\n";
-                    File.AppendAllText(csvPath, csvLine); // Append garante que adiciona no final
+                    generated = true;
+                    
+                    if (!string.IsNullOrEmpty(csvPath))
+                    {
+                        // SUTClass, SUTMethod, TestType, TestFile, NumberOfCorrections, TimeToGenerate
+                        string csvLine =
+                            $"{targetScript.name},{extra},{promptType},{finalPath},{corrections},{attempts},{stopwatch.ElapsedMilliseconds},SUCESS\n";
+                        File.AppendAllText(csvPath, csvLine); // Append garante que adiciona no final
+                    }
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Log($"Erro na geração: {ex.Message}");
                 }
             }
-            finally
+            CurrentStep = GeneratingStep.Finished;
+            UpdateTestDatabase(targetScript, extra, false, null, null);
+            if (!string.IsNullOrEmpty(csvPath)&&!generated)
             {
-                CurrentStep = GeneratingStep.Finished;
+                Log($"Nao gerou com todas as {_config.MaxAttempts} tentativas");
+                stopwatch.Stop();
+                // SUTClass, SUTMethod, TestType, TestFile, NumberOfCorrections, TimeToGenerate
+                string csvLine = $"{targetScript.name},{extra},{promptType},-,{corrections},{stopwatch.ElapsedMilliseconds},FAILURE\n";
+                File.AppendAllText(csvPath, csvLine); // Append garante que adiciona no final
             }
         }
 
@@ -216,7 +225,7 @@ namespace LaundryNDishes.Core
                 Log($"Erros de compilação encontrados. A IA tentará corrigir...");
             }
 
-            throw new Exception("Não foi possível gerar um código de teste que compilasse após 5 tentativas.");
+            throw new Exception($"Não foi possível gerar um código de teste que compilasse após {_config.MaxCorrections} tentativas.");
         }
 
         public async Task<bool?> ExecuteTestAsync(string code, string filePath)
