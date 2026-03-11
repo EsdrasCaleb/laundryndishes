@@ -75,8 +75,8 @@ namespace LaundryNDishes.UnityCore
 
         // --- Chaves de Persistência ---
 
-        private const string KeyPrefix = "LaundryNDishes.";
-        public const string ActiveDatabasePathKey = KeyPrefix + "ActiveDatabasePath";
+        private static string KeyPrefix => $"LaundryNDishes.{Application.dataPath.GetHashCode()}.";
+        public static string ActiveDatabasePathKey => KeyPrefix + "ActiveDatabasePath";
         // Adicione outras chaves aqui se precisar de acesso externo...
 
         // --- Lógica de Carga e Salvamento ---
@@ -100,9 +100,9 @@ namespace LaundryNDishes.UnityCore
             PlayModeTestAssembly = LoadAsmdefFromPath(EditorPrefs.GetString(KeyPrefix + "PlayModeTestAssemblyGuid", string.Empty));
             EditorTestAssembly = LoadAsmdefFromPath(EditorPrefs.GetString(KeyPrefix + "EditorTestAssemblyGuid", string.Empty));
             CustomTemplatesFolder = EditorPrefs.GetString(KeyPrefix + "TemplateFolder", string.Empty);
-            MaxCorrections = 5;
-            MaxAttempts = 5;
-            ShowAllLLmComm = true;
+            MaxCorrections = EditorPrefs.GetInt(KeyPrefix + "MaxCorrections", 5);
+            MaxAttempts = EditorPrefs.GetInt(KeyPrefix + "MaxAttempts", 5);
+            ShowAllLLmComm = EditorPrefs.GetBool(KeyPrefix + "ShowAllLLmComm", true);
             string dbPath = EditorPrefs.GetString(ActiveDatabasePathKey, string.Empty);
             if (!string.IsNullOrEmpty(dbPath))
             {
@@ -129,6 +129,9 @@ namespace LaundryNDishes.UnityCore
             EditorPrefs.SetString(KeyPrefix + "PlayModeTestAssemblyGuid", AssetDatabase.GetAssetPath(PlayModeTestAssembly));
             EditorPrefs.SetString(KeyPrefix + "EditorTestAssemblyGuid", AssetDatabase.GetAssetPath(EditorTestAssembly));
             EditorPrefs.SetString(KeyPrefix + "CustomTemplatesFolder", CustomTemplatesFolder);
+            EditorPrefs.SetInt(KeyPrefix + "MaxCorrections", MaxCorrections);
+            EditorPrefs.SetInt(KeyPrefix + "MaxAttempts", MaxAttempts);
+            EditorPrefs.SetBool(KeyPrefix + "ShowAllLLmComm", ShowAllLLmComm);
 
             string path = (ActiveDatabase != null) ? AssetDatabase.GetAssetPath(ActiveDatabase) : string.Empty;
             EditorPrefs.SetString(ActiveDatabasePathKey, path);

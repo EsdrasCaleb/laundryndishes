@@ -88,6 +88,9 @@ namespace LaundryNDishes.UI
             EditorGUILayout.LabelField("Generation Settings", EditorStyles.boldLabel);
             config.Temperature = EditorGUILayout.Slider("Temperature", config.Temperature, 0f, 2f);
             config.MaxTokens = EditorGUILayout.IntField("Max Tokens", config.MaxTokens);
+            config.MaxAttempts = EditorGUILayout.IntField("Max Attempts (Per Test)", config.MaxAttempts);
+            config.MaxCorrections = EditorGUILayout.IntField("Max Corrections (Per Attempt)", config.MaxCorrections);
+            config.ShowAllLLmComm = EditorGUILayout.Toggle("Show LLM Communications", config.ShowAllLLmComm);
             
             
             EditorGUILayout.Space(20);
