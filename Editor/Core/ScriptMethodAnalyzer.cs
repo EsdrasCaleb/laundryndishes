@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using UnityEngine;
 
 namespace LaundryNDishes.Core // Ajuste para o namespace correto do seu projeto
@@ -64,28 +66,51 @@ namespace LaundryNDishes.Core // Ajuste para o namespace correto do seu projeto
             var monoBehaviourMethods = new HashSet<string>(typeof(MonoBehaviour).GetMethods().Select(m => m.Name));
             
             var publicMethods = scriptClass.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                .Where(m => !m.IsSpecialName && !monoBehaviourMethods.Contains(m.Name));
+                .Where(m => !m.IsSpecialName && !m.IsAbstract && !monoBehaviourMethods.Contains(m.Name));
 
             foreach (var method in publicMethods)
             {
                 // Uma melhoria: Evita que um método "Start" público acabe na lista de testes unitários
                 if (UnityLifecycleMethods.Contains(method.Name)) continue; 
-                
+        
                 unitMethods.Add(method.Name);
             }
 
             // 2. Extrai métodos comportamentais (mesmo que sejam privados, o Unity os chama por "magia")
             var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
-            
+    
             foreach (var lifecycleMethod in UnityLifecycleMethods)
             {
-                if (scriptClass.GetMethod(lifecycleMethod, flags) != null)
+                var methodInfo = scriptClass.GetMethod(lifecycleMethod, flags);
+                if (methodInfo != null && !methodInfo.IsAbstract)
                 {
                     behaviorMethods.Add(lifecycleMethod);
                 }
             }
 
             return (unitMethods, behaviorMethods);
+        }
+        
+        public static bool HasReimplementedType(string code, string targetTypeName)
+        {
+            var tree = CSharpSyntaxTree.ParseText(code);
+            var root = tree.GetRoot();
+
+            return root.DescendantNodes()
+                .OfType<BaseTypeDeclarationSyntax>()
+                .Any(t =>
+                    t.Identifier.ValueText == targetTypeName
+                );
+        }
+        
+        public static bool HasMethodImplementation(string code, string methodName)
+        {
+            var tree = CSharpSyntaxTree.ParseText(code);
+            var root = tree.GetRoot();
+
+            return root.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Any(m => m.Identifier.ValueText == methodName);
         }
     }
 }

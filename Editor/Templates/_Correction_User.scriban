@@ -1,10 +1,26 @@
 The previously generated Unity Test Framework code failed to compile.
 
+You are fixing a unit test file only.
+
+Do not modify production code.
+
 CODE WITH ERRORS:
 {{code}}
 
 COMPILATION ERRORS:
 {{errors}}
+
+{{ if sut_related_methods }}
+Additional context from the system under test:
+
+```csharp
+{{ for method in sut_related_methods }}
+{{ method }}
+
+{{ end }}
+````
+
+{{ end }}
 
 Your task is to fix the code so it compiles.
 
@@ -12,15 +28,26 @@ Rules:
 
 Fix compilation errors.
 
-Do not call Unity event methods directly.  
-If the code calls lifecycle, collision, trigger, or update methods, replace this with a proper Unity simulation using GameObjects, colliders, rigidbodies, or frame updates.
+Do NOT create new classes or reimplement existing classes.
 
-Do not invent properties or methods that do not exist in the provided class code.
+Do NOT implement mock versions of production classes.
+
+Do NOT invent properties, fields, or methods that are not present in the provided code or context.
+
+Modify only the test code when necessary.
 
 Preserve the original test intent.
 
 Keep the assertions whenever possible.
 
+Unity rules:
+
+Do not call Unity lifecycle or event methods directly (Start, Update, OnTriggerEnter, etc.).
+
+If the test depends on collisions, triggers, or physics, simulate them using GameObjects, colliders, rigidbodies, and frame updates.
+
+Output rules:
+
 Return only the corrected C# code.
 
-Return a single ```csharp``` code block.
+Return exactly one `csharp` code block.

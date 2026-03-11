@@ -289,15 +289,15 @@ namespace LaundryNDishes.Core
         /// ETAPA 2: Retorna APENAS o código como string. A compilação acontece isolada na Temp.
         /// </summary>
         public async Task<(string Code, int Corrections)> GenerateAndCompileCodeAsync(PromptType promptType, 
-            MonoScript targetScript, string extra, string initialIntention, string destinationFolder)        {
+            MonoScript targetScript, string method, string initialIntention, string destinationFolder)        {
             string lastGeneratedCode = "";
             string structuredErrors = "";
             string rawClassSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
             
-            string reducedClassSource = GetReducedClassSource(rawClassSource, extra);
+            string reducedClassSource = GetReducedClassSource(rawClassSource, method);
 
             // 2. Busca referências simples pelo projeto (quem chama o método)
-            string[] relatedMethods = FindRelatedMethodsContext(targetScript.name, extra);
+            string[] relatedMethods = FindRelatedMethodsContext(targetScript.name, method);
             Debug.Log(string.Join("\n...\n",relatedMethods));
             for (int i = 0; i < _config.MaxCorrections; i++)
             {
@@ -306,7 +306,7 @@ namespace LaundryNDishes.Core
 
                 Prompt testPrompt = (i == 0)
                     // Passamos o 'reducedClassSource' no lugar do código original e o 'relatedMethods' no lugar do null
-                    ? _promptBuilder.BuildGeneratorPrompt(promptType, initialIntention, reducedClassSource, relatedMethods, extra)
+                    ? _promptBuilder.BuildGeneratorPrompt(promptType, initialIntention, reducedClassSource, relatedMethods, method)
                     : _promptBuilder.BuildCorrectionPrompt(lastGeneratedCode, structuredErrors);
 
                 var testRequest = new LLMRequestData { GeneratedPrompt = testPrompt, Config = _config };
@@ -317,17 +317,16 @@ namespace LaundryNDishes.Core
                 if (string.IsNullOrEmpty(lastGeneratedCode)) continue;
                 
                 var checker = new CompilationChecker();
-                string tempFileNameBase = $"{targetScript.name}_{extra}";
+                string tempFileNameBase = $"{targetScript.name}_{method}";
                 
                 // O validador usa a pasta Temp internamente, o 'destinationFolder' só serve pro nome do arquivo (se ele usar).
                 await checker.Run(lastGeneratedCode, tempFileNameBase, destinationFolder,_config,promptType==PromptType.Unitieditor);
 
-                bool hasReimplementedSUT = Regex.IsMatch(
-                    lastGeneratedCode, 
-                    $@"\b(class|struct|interface|enum)\s+{targetScript.name}\b"
-                );
+                bool hasReimplementedSUT = ScriptMethodAnalyzer.HasReimplementedType(lastGeneratedCode,targetScript.name);
+                    
+                bool hasReimplementedMethod = ScriptMethodAnalyzer.HasMethodImplementation(lastGeneratedCode,method);
 
-                if (hasReimplementedSUT)
+                if (hasReimplementedSUT||hasReimplementedMethod)
                 {
                     Log($"[Validação] A IA tentou reimplementar a classe SUT '{targetScript.name}'. Rejeitando...");
                     // Força a mensagem de erro para que o LLM entenda o que não deve fazer no CorrectionPrompt

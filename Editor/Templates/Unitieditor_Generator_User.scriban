@@ -24,14 +24,18 @@ TEST OBJECTIVE
 Requirements:
 
 * Arrange the necessary objects and state.
-* Invoke the method behavior.
+* Invoke the target method {{ extra }} directly.
 * Assert observable results related to the objective.
 
 Rules:
 
-* Use [Test] or [UnityTest] when appropriate.
+* Use just [Test] not [UnityTest].
 * Include required using statements.
 * The test class must be public and named after the SUT (e.g., ClassNameTests).
+* Do not create new classes or reimplement missing dependencies.
+* Do not implement mock versions of classes.
+* Use only the classes and methods provided in the context.
+* If a dependency cannot be instantiated, adjust the test setup instead of implementing new code.
 
 Output format:
 

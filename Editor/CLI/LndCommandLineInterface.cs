@@ -174,14 +174,13 @@ namespace LaundryNDishes.CLI
                     // Usa a classe utilitária que criamos antes para extrair os métodos!
                     var (unitMethods, behaviorMethods) = ScriptMethodAnalyzer.CategorizeMethods(scriptType);
                     
-                    // --- INÍCIO DA ALTERAÇÃO: Barra de progresso ASCII no console ---
                     float progressPercentage = ((float)currentScriptIndex / totalScripts) * 100f;
                     int filledBars = (int)(progressPercentage / 5f); // 20 barrinhas no total (100 / 5)
                     string progressBar = new string('#', filledBars).PadRight(20, '-');
             
                     Debug.Log($"\n[LnD CLI] PROGRESSO: [{progressBar}] {progressPercentage:F1}% ({currentScriptIndex}/{totalScripts})");
                     Debug.Log($"[LnD CLI] Analisando Script: {script.name} | É MonoBehaviour? {isMonoBehaviour}");
-                    // --- FIM DA ALTERAÇÃO ---
+
                     if (isMonoBehaviour)
                     {
                         // 1. Gera os testes do ciclo de vida da Unity (Behavior)
