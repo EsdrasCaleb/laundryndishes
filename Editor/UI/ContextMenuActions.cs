@@ -5,7 +5,7 @@ namespace LaundryNDishes.UI
 {
     public static class ContextMenuActions
     {
-        private const string MENU_PATH = "Assets/LnD Generate Tests...";
+        private const string MENU_PATH = "Assets/LnD/Generate Automated Tests";
 
         [MenuItem(MENU_PATH, false, 1000)]
         private static void OpenTestGeneratorHub()

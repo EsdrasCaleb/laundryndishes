@@ -38,9 +38,9 @@ namespace LaundryNDishes.Core
             return BuildPromptFromTemplates(promptType, "Generator", data);
         }
 
-        public Prompt BuildCorrectionPrompt(string code, string errors)
+        public Prompt BuildCorrectionPrompt(string code, string errors, string[] sutRelatedMethods)
         {
-            var data = new ScriptObject { ["code"] = code, ["errors"] = errors };
+            var data = new ScriptObject { ["code"] = code, ["errors"] = errors, ["sut_related_methods"] = sutRelatedMethods };
             var prompt = new Prompt();
             string systemTemplate = $"_Correction_System.scriban";
             string userTemplate = $"_Correction_User.scriban";

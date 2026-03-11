@@ -40,8 +40,7 @@ namespace LaundryNDishes.UnityCore
                 return _instance;
             }
         }
-
-        // --- INÍCIO DA MÁGICA ---
+        
         // A Unity chama isso automaticamente SEMPRE que termina de compilar os códigos do projeto.
         [UnityEditor.Callbacks.DidReloadScripts]
         private static void OnScriptsReloaded()
@@ -96,6 +95,13 @@ namespace LaundryNDishes.UnityCore
                 Debug.Log("[TestDatabase] Referências de scripts recém-gerados foram conectadas com sucesso!");
             }
         }
-        // --- FIM DA MÁGICA ---
+
+        public bool HasTestForMethod(MonoScript targetScript, string method)
+        {
+            if (targetScript == null || string.IsNullOrEmpty(method)) return false;
+            
+            // Verifica se existe algum teste na lista para este script e este método
+            return AllTests.Exists(t => t.TargetScript == targetScript && t.SutMethod == method);
+        }
     }
 }

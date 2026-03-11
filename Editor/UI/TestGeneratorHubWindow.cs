@@ -2,37 +2,40 @@ using UnityEditor;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using LaundryNDishes.Core;
 using LaundryNDishes.UnityCore;
 using LaundryNDishes.Services;
+using LaundryNDishes.Data;
 
 namespace LaundryNDishes.UI
 {
     public class TestGeneratorHubWindow : EditorWindow
     {
-        // Classe auxiliar para gerenciar a seleção dos métodos na UI
+        // Expandimos a classe para guardar o tipo de teste e se já existe no banco
         private class SelectableMethod
         {
             public string Name;
             public bool IsSelected;
-            public SelectableMethod(string name) { Name = name; IsSelected = false; }
+            public PromptType Type;
+            public bool HasExistingTest;
+
+            public SelectableMethod(string name, PromptType type, bool hasExistingTest)
+            {
+                Name = name;
+                Type = type;
+                HasExistingTest = hasExistingTest;
+                IsSelected = false; // Começa desmarcado
+            }
         }
 
         private MonoScript _targetScript;
-        private int _selectedTab = 0;
-        private string[] _tabTitles = { "Unit Tests", "Behavioral Tests", "Integration Test" };
-
-        private List<SelectableMethod> _unitTestMethods = new List<SelectableMethod>();
-        private List<SelectableMethod> _behaviorMethods = new List<SelectableMethod>();
-        private string _integrationTestDescription = "The user presses the jump button, the character plays the jump animation, and its Y position increases.";
+        private List<SelectableMethod> _allMethods = new List<SelectableMethod>();
         private Vector2 _scrollPosition;
         private string _statusMessage;
         private MessageType _statusMessageType = MessageType.Info;
         private bool _isGenerating = false;
 
-        // Método estático para criar e mostrar a janela
         public static void OpenWindow(MonoScript script)
         {
             var window = GetWindow<TestGeneratorHubWindow>("Test Generator Hub");
@@ -44,19 +47,17 @@ namespace LaundryNDishes.UI
         {
             _targetScript = script;
             titleContent = new GUIContent($"Tests for {script.name}");
-            PopulateMethodLists();
+            PopulateMethodList();
         }
 
-        // Faz a análise do script uma vez quando a janela é aberta/focada
         private void OnEnable()
         {
             if (_targetScript != null)
             {
-                PopulateMethodLists();
+                PopulateMethodList();
             }
         }
 
-        // Desenha a UI da janela
         private void OnGUI()
         {
             if (_targetScript == null)
@@ -64,86 +65,70 @@ namespace LaundryNDishes.UI
                 EditorGUILayout.HelpBox("Nenhum script selecionado...", MessageType.Warning);
                 return;
             }
-            // --- MOSTRA A MENSAGEM DE STATUS NO TOPO DA JANELA ---
+
             if (!string.IsNullOrEmpty(_statusMessage))
             {
                 EditorGUILayout.HelpBox(_statusMessage, _statusMessageType);
                 EditorGUILayout.Space();
             }
 
-            // --- DESABILITA A UI ENQUANTO A GERAÇÃO ESTÁ ATIVA ---
             EditorGUI.BeginDisabledGroup(_isGenerating);
             {
                 EditorGUILayout.LabelField("Target Script:", _targetScript.name, EditorStyles.boldLabel);
                 EditorGUILayout.Space();
 
-                _selectedTab = GUILayout.Toolbar(_selectedTab, _tabTitles);
-                EditorGUILayout.Space();
-
-                switch (_selectedTab)
-                {
-                    case 0: DrawUnitTestsTab(); break;
-                    case 1: DrawBehavioralTestsTab(); break;
-                    case 2: DrawIntegrationTestTab(); break;
-                }
+                // Única aba: Mostra todos os métodos
+                DrawMethodsTab();
             }
             EditorGUI.EndDisabledGroup();
         }
 
-        private void DrawUnitTestsTab()
+        private void DrawMethodsTab()
         {
-            EditorGUILayout.LabelField("Selecione os métodos para gerar testes unitários:", EditorStyles.boldLabel);
-            DrawMethodsList(_unitTestMethods);
-            if (GUILayout.Button("Generate Unit Tests for Selected Methods"))
-            {
-                var selectedMethods = _unitTestMethods.Where(m => m.IsSelected).Select(m => m.Name).ToList();
-                RunSequentialGeneration(selectedMethods, PromptType.Uniti);
-            }
-        }
-
-        private void DrawBehavioralTestsTab()
-        {
-            EditorGUILayout.LabelField("Selecione os métodos de ciclo de vida para gerar testes comportamentais:", EditorStyles.boldLabel);
-            DrawMethodsList(_behaviorMethods);
-            if (GUILayout.Button("Generate Behavioral Tests for Selected Methods"))
-            {
-                var selectedMethods = _behaviorMethods.Where(m => m.IsSelected).Select(m => m.Name).ToList();
-                RunSequentialGeneration(selectedMethods, PromptType.Behavior);
-            }
-        }
-
-        private void DrawIntegrationTestTab()
-        {
-            EditorGUILayout.LabelField("Descreva o cenário de integração para o teste (em inglês):", EditorStyles.boldLabel);
-            _integrationTestDescription = EditorGUILayout.TextArea(_integrationTestDescription, GUILayout.Height(100));
-            if (GUILayout.Button("Generate Integration Test"))
-            {
-                RunSequentialGeneration(new List<string> { _integrationTestDescription }, PromptType.Integration);
-            }
-        }
-
-        private void DrawMethodsList(List<SelectableMethod> methods)
-        {
+            EditorGUILayout.LabelField("Select methods to generate tests:", EditorStyles.boldLabel);
+            
             _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition, GUILayout.ExpandHeight(true));
-            foreach (var method in methods)
+            
+            if (_allMethods.Count == 0)
             {
-                method.IsSelected = EditorGUILayout.ToggleLeft(method.Name, method.IsSelected);
+                EditorGUILayout.LabelField("No supported methods found in this script.");
             }
+            else
+            {
+                foreach (var method in _allMethods)
+                {
+                    EditorGUI.BeginDisabledGroup(method.HasExistingTest);
+                    
+                    // Mostra um aviso se já existir
+                    string displayName = method.HasExistingTest ? $"{method.Name} (Test already exists)" : method.Name;
+                    
+                    method.IsSelected = EditorGUILayout.ToggleLeft(displayName, method.IsSelected);
+                    
+                    EditorGUI.EndDisabledGroup();
+                }
+            }
+            
             EditorGUILayout.EndScrollView();
+
+            EditorGUILayout.Space();
+
+            if (GUILayout.Button("Generate Tests for Selected Methods", GUILayout.Height(30)))
+            {
+                var methodsToGenerate = _allMethods.Where(m => m.IsSelected && !m.HasExistingTest).ToList();
+                RunSequentialGeneration(methodsToGenerate);
+            }
         }
 
-        private async void RunSequentialGeneration(List<string> methodNames, PromptType promptType)
+        private async void RunSequentialGeneration(List<SelectableMethod> methodsToGenerate)
         {
-            if (!methodNames.Any() || (promptType == PromptType.Integration && string.IsNullOrWhiteSpace(methodNames.First())))
+            if (!methodsToGenerate.Any())
             {
-                // ATUALIZA A MENSAGEM DE STATUS EM VEZ DE USAR Debug.LogWarning
-                _statusMessage = "Nenhum método selecionado ou descrição fornecida.";
+                _statusMessage = "Nenhum método válido selecionado.";
                 _statusMessageType = MessageType.Warning;
-                Repaint(); // Força o redesenho da janela para mostrar a mensagem
+                Repaint();
                 return;
             }
 
-            // Inicia o processo
             _isGenerating = true;
             var progressWindow = GetWindow<GenerationProgressWindow>("Test Generation Log");
             progressWindow.Show();
@@ -154,56 +139,98 @@ namespace LaundryNDishes.UI
                 var llmService = config.GetCurrentService();
                 var generator = new UnitTestGenerator(llmService, config);
 
-                _statusMessage = $"Iniciando geração em lote de {methodNames.Count} teste(s)...";
+                _statusMessage = $"Iniciando geração em lote de {methodsToGenerate.Count} teste(s)...";
                 _statusMessageType = MessageType.Info;
                 Repaint();
 
-                for (int i = 0; i < methodNames.Count; i++)
+                for (int i = 0; i < methodsToGenerate.Count; i++)
                 {
-                    string methodNameOrDescription = methodNames[i];
+                    var methodInfo = methodsToGenerate[i];
 
-                    // Atualiza o status para cada método
-                    _statusMessage = $"({i + 1}/{methodNames.Count}) Gerando teste para: {methodNameOrDescription}...";
+                    _statusMessage = $"({i + 1}/{methodsToGenerate.Count}) Gerando teste para: {methodInfo.Name} [{methodInfo.Type}]...";
                     Repaint();
 
                     progressWindow.StartMonitoring(generator);
-                    await generator.Generate(_targetScript, methodNameOrDescription, promptType);
+                    
+                    // Passa o PromptType correto para cada método individualmente
+                    await generator.Generate(_targetScript, methodInfo.Name, methodInfo.Type);
                 }
 
-                _statusMessage = $"Processo finalizado! {methodNames.Count} teste(s) foram processados com sucesso.";
+                _statusMessage = $"Processo finalizado! {methodsToGenerate.Count} teste(s) processados.";
                 progressWindow.ShowFinishedMessage(_statusMessage);
+                
+                // Repopula a lista ao final para desabilitar os métodos que acabaram de ganhar testes
+                PopulateMethodList(); 
+                EditorApplication.delayCall += () =>
+                {
+                    Debug.Log("[LnD] Forçando atualização do AssetDatabase para compilar novos testes...");
+                    AssetDatabase.Refresh();
+                };
             }
             catch (System.Exception ex)
             {
                 _statusMessage = $"ERRO: {ex.Message}";
                 _statusMessageType = MessageType.Error;
-                Debug.LogError(ex); // Continua logando a exceção completa no console
+                Debug.LogError(ex);
             }
             finally
             {
-                // GARANTE QUE A UI SEJA REABILITADA NO FINAL, MESMO SE OCORRER UM ERRO
                 _isGenerating = false;
-                _statusMessage += $"Terminado";
-                _statusMessageType = MessageType.Info;
                 Repaint();
             }
         }
 
-        private void PopulateMethodLists()
+        private void PopulateMethodList()
         {
-            _unitTestMethods.Clear();
-            _behaviorMethods.Clear();
+            _allMethods.Clear();
 
             if (_targetScript == null) return;
             var scriptClass = _targetScript.GetClass();
             if (scriptClass == null) return;
 
-            // Chama o analisador que criamos para fazer o trabalho pesado
+            var config = LnDConfig.Instance;
+            var activeDb = config.ActiveDatabase;
+
+            // Usa o analisador existente
             var (unitMethods, behaviorMethods) = ScriptMethodAnalyzer.CategorizeMethods(scriptClass);
 
-            // Popula as listas da interface (SelectableMethod) usando os nomes retornados
-            _unitTestMethods = unitMethods.Select(name => new SelectableMethod(name)).ToList();
-            _behaviorMethods = behaviorMethods.Select(name => new SelectableMethod(name)).ToList();
+            bool isMonoBehaviour = scriptClass.IsSubclassOf(typeof(MonoBehaviour));
+
+            if (!isMonoBehaviour)
+            {
+                // Se não é MonoBehaviour, filtra métodos abstratos e junta tudo como Unit Test
+                var allEligibleMethods = unitMethods.Concat(behaviorMethods)
+                    .Where(methodName => 
+                    {
+                        var methodInfo = scriptClass.GetMethod(methodName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static);
+                        return methodInfo != null && !methodInfo.IsAbstract;
+                    })
+                    .ToList();
+
+                foreach (var method in allEligibleMethods)
+                {
+                    bool exists = activeDb != null && activeDb.HasTestForMethod(_targetScript, method);
+                    _allMethods.Add(new SelectableMethod(method, PromptType.Uniti, exists));
+                }
+            }
+            else
+            {
+                // Se for MonoBehaviour, mantém a separação
+                foreach (var method in unitMethods)
+                {
+                    bool exists = activeDb != null && activeDb.HasTestForMethod(_targetScript, method);
+                    _allMethods.Add(new SelectableMethod(method, PromptType.Uniti, exists));
+                }
+
+                foreach (var method in behaviorMethods)
+                {
+                    bool exists = activeDb != null && activeDb.HasTestForMethod(_targetScript, method);
+                    _allMethods.Add(new SelectableMethod(method, PromptType.Behavior, exists));
+                }
+            }
+
+            // Ordena alfabeticamente para ficar mais organizado na UI
+            _allMethods = _allMethods.OrderBy(m => m.Name).ToList();
         }
     }
 }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -11,24 +12,30 @@ namespace LaundryNDishes.Core
     public class SUTContextReducer : CSharpSyntaxRewriter
     {
         private readonly string _targetMethodName;
+        private readonly HashSet<string> _methodsToKeep;
 
-        public SUTContextReducer(string targetMethodName)
+        // Agora recebe a lista de métodos que DEVEM ser mantidos
+        public SUTContextReducer(string targetMethodName, HashSet<string> methodsToKeep)
         {
-            // Limpa o nome caso venha algo como "MeuMetodo(int)" da UI
-            _targetMethodName = targetMethodName.Split('(')[0].Trim();
+            _targetMethodName = targetMethodName;
+            _methodsToKeep = methodsToKeep;
         }
 
         public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node)
         {
-            // Se o método atual não tiver o nome do método que queremos testar, 
-            // retornamos null. Isso remove o método do código final.
-            if (node.Identifier.Text != _targetMethodName)
+            string currentMethodName = node.Identifier.Text;
+
+            // REGRA DE OURO: Mantém se for o método alvo OU se for um método chamado por ele!
+            if (currentMethodName == _targetMethodName || _methodsToKeep.Contains(currentMethodName))
             {
-                return null; 
+                return base.VisitMethodDeclaration(node);
             }
 
-            // Se for o método alvo, mantemos ele na árvore
-            return base.VisitMethodDeclaration(node);
+            // Caso contrário, ofusca (apaga o corpo e deixa só a assinatura)
+            var stubBody = SyntaxFactory.Block(SyntaxFactory.ParseStatement("// Código ofuscado\n"));
+            return node.WithBody(stubBody)
+                .WithExpressionBody(null) 
+                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.None)); 
         }
     }
 }

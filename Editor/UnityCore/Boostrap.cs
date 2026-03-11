@@ -52,6 +52,7 @@ namespace LaundryNDishes.UnityCore
                     string path = AssetDatabase.GUIDToAssetPath(databaseGUIDs[0]);
                     var db = AssetDatabase.LoadAssetAtPath<TestDatabase>(path);
                     LnDConfig.Instance.SetActiveDatabase(db);
+                    config.Save();
                     Debug.Log($"Laundry & Dishes: Base de dados '{db.name}' configurada como ativa.");
                 }
             }

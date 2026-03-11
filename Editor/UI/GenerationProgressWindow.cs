@@ -14,6 +14,7 @@ namespace LaundryNDishes.UI
         // Lista para armazenar as mensagens de log recebidas.
         private readonly List<string> _logMessages = new List<string>();
         private Vector2 _scrollPosition;
+        private string _finalMessage = null;
 
         /// <summary>
         /// O método principal que inicia o monitoramento de um processo de geração.
@@ -21,9 +22,9 @@ namespace LaundryNDishes.UI
         public void StartMonitoring(UnitTestGenerator generator)
         {
             _generator = generator;
-            _lastDisplayedStep = UnitTestGenerator.GeneratingStep.Idle; // Reseta o estado
             _logMessages.Clear();
             _lastDisplayedStep = UnitTestGenerator.GeneratingStep.Idle;
+            _finalMessage = null;
 
             // INSCRIÇÃO: Diz ao gerador para chamar 'HandleProgressLog' sempre que o evento OnProgressLog disparar.
             _generator.OnProgressLog += HandleProgressLog;
@@ -72,7 +73,12 @@ namespace LaundryNDishes.UI
             
             EditorGUILayout.EndScrollView();
             // Mensagem final
-            if (_generator.CurrentStep == UnitTestGenerator.GeneratingStep.Finished)
+            if (!string.IsNullOrEmpty(_finalMessage))
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.HelpBox(_finalMessage, MessageType.Info);
+            }
+            else if (_generator != null && _generator.CurrentStep == UnitTestGenerator.GeneratingStep.Finished)
             {
                 if (_generator.TestPassed.HasValue && _generator.TestPassed.Value)
                 {
@@ -105,10 +111,16 @@ namespace LaundryNDishes.UI
         // Adicione este método à sua classe GenerationProgressWindow
         public void ShowFinishedMessage(string message)
         {
-            _generator = null; // Para de monitorar o último gerador
+            if (_generator != null)
+            {
+                _generator.OnProgressLog -= HandleProgressLog;
+            }
+            
+            _generator = null; 
             _logMessages.Add("--------------------");
-            _logMessages.Add(message); // Adiciona a mensagem final ao log também
-            EditorGUILayout.HelpBox(message, MessageType.Info);
+            _logMessages.Add(message); 
+            _finalMessage = message; // Salva a mensagem para o OnGUI exibir
+            
             Repaint();
         }
         

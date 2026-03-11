@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using LaundryNDishes.UnityCore;
 using UnityEditor.Compilation;
 using UnityEngine;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace LaundryNDishes.TestRunner
 {
@@ -21,7 +23,7 @@ namespace LaundryNDishes.TestRunner
         [Serializable]
         private class AsmDefData { public string name; }
         
-        public enum State { Idle, SavingAndCompiling, Finished }
+        public enum State { Idle, Compiling, Finished }
         public State CurrentState { get; private set; } = State.Idle;
         
         public bool IsDone => CurrentState == State.Finished;
@@ -29,11 +31,8 @@ namespace LaundryNDishes.TestRunner
         
         public List<CompilationError> CompilationErrors { get; private set; }
         
-        // Mantive a propriedade caso precise ler o nome depois
         public string AssemblyName { get; private set; }
 
-        // O parâmetro 'folder' foi mantido na assinatura para não quebrar o código
-        // que chama essa função, mas ele será ignorado aqui dentro.
         public async Task Run(string testCode, string filename, string folder, LnDConfig config, bool isEditorTest)        
         {
             if (CurrentState != State.Idle)
@@ -42,78 +41,88 @@ namespace LaundryNDishes.TestRunner
                 return;
             }
 
-            CurrentState = State.SavingAndCompiling;
+            CurrentState = State.Compiling;
             CompilationErrors = new List<CompilationError>();
-            
-            // 1. Definimos um diretório seguro DENTRO da pasta Temp do projeto Unity.
-            // A pasta Temp é ignorada pelo AssetDatabase, então não causa recarregamentos.
-            string tempDirectory = Path.Combine("Temp", "LnD_Validation");
-            Directory.CreateDirectory(tempDirectory);
-
-            // 2. Caminhos para o script C# temporário e a DLL temporária
-            string tempCsPath = Path.Combine(tempDirectory, $"{filename}_Validation.cs");
-            string tempDllPath = Path.Combine(tempDirectory, $"{filename}_Validation.dll");
-            
-            var compilationTaskSource = new TaskCompletionSource<List<CompilationError>>();
 
             try
             {
-                // Salva o "rascunho" na pasta Temp
-                await File.WriteAllTextAsync(tempCsPath, testCode);
-
-                // 3. Usa o AssemblyBuilder apontando para o arquivo rascunho
-                var assemblyBuilder = new AssemblyBuilder(tempDllPath, new[] { tempCsPath });
-                
-                var references = new HashSet<string>();
+                // 1. Coleta os caminhos das DLLs de referência (Isso DEVE rodar na Main Thread)
+                var referencesPaths = new HashSet<string>();
                 var allAssemblies = CompilationPipeline.GetAssemblies();
 
-                // Função local para achar o assembly compilado correspondente ao .asmdef e adicionar as refs
                 void AddAssemblyAndItsReferences(UnityEditorInternal.AssemblyDefinitionAsset asmDefAsset)
                 {
                     if (asmDefAsset == null) return;
                 
                     string targetName = JsonUtility.FromJson<AsmDefData>(asmDefAsset.text).name;
-                        var targetAsm = allAssemblies.FirstOrDefault(a => a.name == targetName);
+                    var targetAsm = allAssemblies.FirstOrDefault(a => a.name == targetName);
                 
                     if (targetAsm != null)
                     {
-                        references.Add(targetAsm.outputPath); // Adiciona a DLL do próprio assembly
+                        referencesPaths.Add(targetAsm.outputPath); 
                         foreach (var refPath in targetAsm.compiledAssemblyReferences)
                         {
-                            references.Add(refPath); // Adiciona as dependências dele (UnityEngine, etc)
+                            referencesPaths.Add(refPath); 
                         }
                     }
                 }
 
-                // Adiciona as referências do Projeto Principal (onde fica o script testado)
+                // A) Adiciona as dependências explícitas dos seus projetos
                 AddAssemblyAndItsReferences(config.MainProjectAssembly);
-
-                // Adiciona as referências do Projeto de Testes correto (onde estão os utilitários de teste e NUnit)
                 var testAssemblyTarget = isEditorTest ? config.EditorTestAssembly : config.PlayModeTestAssembly;
                 AddAssemblyAndItsReferences(testAssemblyTarget);
 
-                assemblyBuilder.additionalReferences = references.ToArray();
-
-                assemblyBuilder.buildFinished += (string assemblyPath, CompilerMessage[] compilerMessages) =>
+                // B) A MÁGICA DA FORÇA BRUTA: Varre o domínio da aplicação.
+                // Isso pega o NUnit, o Unity Test Framework, o Core do C#, e todas as pacotes escondidos.
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
                 {
-                    var errors = compilerMessages
-                        .Where(m => m.type == CompilerMessageType.Error)
-                        .Select(msg => new CompilationError { Line = msg.line, Message = msg.message })
-                        .ToList();
-                    
-                    compilationTaskSource.TrySetResult(errors);
-                };
+                    if (!assembly.IsDynamic && !string.IsNullOrEmpty(assembly.Location) && File.Exists(assembly.Location))
+                    {
+                        referencesPaths.Add(assembly.Location);
+                    }
+                }
 
-                // Inicia a compilação isolada
-                assemblyBuilder.Build();
-                
-                // Aguarda o resultado
-                CompilationErrors = await compilationTaskSource.Task;
+                // 2. Transforma tudo em tarefa assíncrona (Task.Run) para a compilação não pesar na UI
+                await Task.Run(() =>
+                {
+                    // A. Transforma os caminhos em Referências do Roslyn
+                    var metadataReferences = referencesPaths
+                        .Select(path => MetadataReference.CreateFromFile(path))
+                        .ToList();
+
+                    // B. Cria a Árvore Sintática direto da string
+                    var syntaxTree = CSharpSyntaxTree.ParseText(testCode);
+
+                    // C. Prepara a compilação do Roslyn
+                    var compilation = CSharpCompilation.Create(
+                        $"{filename}_Validation",
+                        new[] { syntaxTree },
+                        metadataReferences,
+                        new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+                    );
+
+                    // D. Compila para a Memória (MemoryStream) em vez do disco
+                    using var memoryStream = new MemoryStream();
+                    var emitResult = compilation.Emit(memoryStream);
+
+                    // E. Lê o resultado
+                    if (!emitResult.Success)
+                    {
+                        CompilationErrors = emitResult.Diagnostics
+                            .Where(diag => diag.Severity == DiagnosticSeverity.Error)
+                            .Select(diag => new CompilationError 
+                            { 
+                                Line = diag.Location.GetLineSpan().StartLinePosition.Line + 1, 
+                                Message = diag.GetMessage() 
+                            })
+                            .ToList();
+                    }
+                });
 
                 if (HasErrors)
                 {
-                    Debug.Log($"[Checker] {CompilationErrors.Count} erro(s) encontrados na validação de {filename}.\n " +
-                              $"{string.Join('\n',CompilationErrors)}");
+                    Debug.Log($"[Checker] {CompilationErrors.Count} erro(s) encontrados na validação de {filename}.\n" +
+                              $"{string.Join('\n', CompilationErrors)}");
                 }
                 else
                 {
@@ -127,11 +136,6 @@ namespace LaundryNDishes.TestRunner
             }
             finally
             {
-                // 4. LIMPEZA TOTAL: Apaga o .cs e a .dll rascunhos. 
-                // Nenhum lixo fica no projeto!
-                if (File.Exists(tempCsPath)) File.Delete(tempCsPath);
-                if (File.Exists(tempDllPath)) File.Delete(tempDllPath);
-                
                 CurrentState = State.Finished;
             }
         }

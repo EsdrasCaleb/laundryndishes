@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -10,6 +11,7 @@ using LaundryNDishes.Data;
 using LaundryNDishes.TestRunner;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using UnityEditor.Compilation;
 using Debug = UnityEngine.Debug;
 
@@ -200,71 +202,118 @@ namespace LaundryNDishes.Core
 
         #region Helper Methods - As Etapas da Geração
         
-        public string GetReducedClassSource(string fullClassSource, string methodName)
+        public string GetReducedClassSource(SyntaxTree tree, string methodName)
         {
             try
             {
-                // 1. Transforma o texto em uma Árvore Sintática do Roslyn
-                SyntaxTree tree = CSharpSyntaxTree.ParseText(fullClassSource);
-                SyntaxNode root = tree.GetRoot();
+                var root = tree.GetRoot();
+                string cleanMethodName = methodName.Split('(')[0].Trim();
 
-                // 2. Aplica o nosso podador
-                var reducer = new SUTContextReducer(methodName);
-                SyntaxNode reducedRoot = reducer.Visit(root);
+                var targetMethod = root.DescendantNodes()
+                    .OfType<MethodDeclarationSyntax>()
+                    .FirstOrDefault(m => m.Identifier.Text == cleanMethodName);
 
-                // 3. Devolve o código limpo e menor
+                if (targetMethod == null)
+                    return tree.GetText().ToString();
+
+                var walker = new MethodInvocationWalker();
+                walker.Visit(targetMethod);
+
+                var reducer = new SUTContextReducer(cleanMethodName, walker.CalledMethods);
+                var reducedRoot = reducer.Visit(root);
+
                 return reducedRoot.ToFullString();
             }
             catch (System.Exception ex)
             {
-                Debug.LogWarning($"[Roslyn] Falha ao reduzir código da SUT. Usando o original. Erro: {ex.Message}");
-                return fullClassSource; // Fallback de segurança
+                Debug.LogWarning($"[Roslyn] Falha ao reduzir código. Usando original. Erro: {ex.Message}");
+                return tree.GetText().ToString();
             }
         }
+        
         
         /// <summary>
         /// Busca arquivos .cs no projeto (ignorando pastas de teste e ThirdParty) 
         /// que possuam uma chamada para o método da SUT.
         /// </summary>
-        private string[] FindRelatedMethodsContext(string sutClassName, string methodName)
+        private string[] FindRelatedMethodsContext(SyntaxTree sutTree, string sutClassName, string methodName)
         {
-            // Limpa o nome do método caso tenha vindo com parênteses, ex: "Pular()" -> "Pular"
             string cleanMethodName = methodName.Split('(')[0].Trim();
-            
-            // Regex básico para achar "Sut.Metodo" ou apenas "Metodo" (pode gerar falsos positivos, mas serve ao propósito de contexto)
-            string searchPattern = $@"\b{cleanMethodName}\s*\("; 
-            
-            var relatedContexts = new System.Collections.Generic.List<string>();
-            
-            // Pega todos os scripts C# dentro de Assets, ignorando pastas comuns de terceiros e a própria pasta de testes
+
+            var sutRoot = sutTree.GetRoot();
+
+            var targetMethod = sutRoot.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .FirstOrDefault(m => m.Identifier.Text == cleanMethodName);
+
+            if (targetMethod == null) return new string[0];
+
+            // 1. Pegar todos os métodos chamados dentro do SUT
+            var walker = new MethodInvocationWalker();
+            walker.Visit(targetMethod);
+            var allCalledMethods = walker.CalledMethods;
+
+            // 2. Descobrir métodos da própria SUT
+            var internalMethods = new HashSet<string>(
+                sutRoot.DescendantNodes()
+                    .OfType<MethodDeclarationSyntax>()
+                    .Select(m => m.Identifier.Text)
+            );
+
+            // 3. Chamadas externas
+            var externalCalledMethods = allCalledMethods.Except(internalMethods).ToHashSet();
+            if (externalCalledMethods.Count == 0) return new string[0];
+
+            var relatedContexts = new List<string>();
+
+            // 4. Buscar scripts do projeto
             string[] allScripts = AssetDatabase.FindAssets("t:MonoScript")
                 .Select(AssetDatabase.GUIDToAssetPath)
-                .Where(path => path.EndsWith(".cs") 
-                               && !path.Contains("/ThirdParty/") 
-                               && !path.Contains("/Plugins/")
-                               && !path.Contains(sutClassName)) // Ignora a própria SUT
+                .Where(path =>
+                    path.EndsWith(".cs") &&
+                    !path.Contains("/ThirdParty/") &&
+                    !path.Contains("/Plugins/") &&
+                    System.IO.Path.GetFileNameWithoutExtension(path) != sutClassName
+                )
                 .ToArray();
 
             foreach (string path in allScripts)
             {
-                string content = File.ReadAllText(path);
-                if (Regex.IsMatch(content, searchPattern))
-                {
-                    // Pega o nome do arquivo/classe que fez a chamada
-                    string callerClass = System.IO.Path.GetFileNameWithoutExtension(path);
-                    
-                    // Extrai um fragmento do código (aproximadamente 100 caracteres ao redor da chamada)
-                    // para dar contexto ao LLM sobre COMO o método está sendo usado lá fora.
-                    var match = Regex.Match(content, searchPattern);
-                    int startIndex = Math.Max(0, match.Index - 50);
-                    int length = Math.Min(content.Length - startIndex, 150);
-                    string snippet = content.Substring(startIndex, length).Replace("\n", " ").Trim();
+                string content = System.IO.File.ReadAllText(path, System.Text.Encoding.UTF8);
 
-                    relatedContexts.Add($"Class: {callerClass} | Usage: ...{snippet}...");
-                    
-                    // Limita a 3 ou 4 arquivos no máximo para não explodir a janela de contexto do LLM
-                    if (relatedContexts.Count >= 3) break;
-                }
+                // Filtro rápido melhorado
+                bool mightContain = externalCalledMethods.Any(m => content.Contains(m + "("));
+                if (!mightContain) continue;
+
+                SyntaxTree extTree = CSharpSyntaxTree.ParseText(content);
+                var extRoot = extTree.GetRoot();
+
+                // 5. Verificar métodos declarados
+                var declaredMethodsToKeep = extRoot.DescendantNodes()
+                    .OfType<MethodDeclarationSyntax>()
+                    .Where(m =>
+                        externalCalledMethods.Contains(m.Identifier.Text) &&
+                        m.Body != null // evita interface/abstract
+                    )
+                    .Select(m => m.Identifier.Text)
+                    .ToHashSet();
+
+                if (declaredMethodsToKeep.Count == 0)
+                    continue;
+
+                string callerClass = System.IO.Path.GetFileNameWithoutExtension(path);
+
+                // 6. Reduz classe externa
+                var reducer = new SUTContextReducer(string.Empty, declaredMethodsToKeep);
+                var reducedExtRoot = reducer.Visit(extRoot);
+
+                string reducedContent = reducedExtRoot.ToFullString();
+
+                relatedContexts.Add($"// External Dependency: {callerClass}\n{reducedContent}");
+
+                // limite para não explodir contexto
+                if (relatedContexts.Count >= 3)
+                    break;
             }
 
             return relatedContexts.ToArray();
@@ -293,12 +342,17 @@ namespace LaundryNDishes.Core
             string lastGeneratedCode = "";
             string structuredErrors = "";
             string rawClassSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
-            
-            string reducedClassSource = GetReducedClassSource(rawClassSource, method);
+            SyntaxTree sutTree = CSharpSyntaxTree.ParseText(rawClassSource);
+            string reducedClassSource = GetReducedClassSource(sutTree, method);
 
             // 2. Busca referências simples pelo projeto (quem chama o método)
-            string[] relatedMethods = FindRelatedMethodsContext(targetScript.name, method);
-            Debug.Log(string.Join("\n...\n",relatedMethods));
+            string[] relatedMethods = FindRelatedMethodsContext(sutTree, targetScript.name, method);
+
+            if (relatedMethods == null || relatedMethods.All(string.IsNullOrWhiteSpace))
+            {
+                relatedMethods = null;
+            }
+
             for (int i = 0; i < _config.MaxCorrections; i++)
             {
                 CurrentStep = (i == 0) ? GeneratingStep.GeneratingCode : GeneratingStep.CorrectingCode;
@@ -307,7 +361,7 @@ namespace LaundryNDishes.Core
                 Prompt testPrompt = (i == 0)
                     // Passamos o 'reducedClassSource' no lugar do código original e o 'relatedMethods' no lugar do null
                     ? _promptBuilder.BuildGeneratorPrompt(promptType, initialIntention, reducedClassSource, relatedMethods, method)
-                    : _promptBuilder.BuildCorrectionPrompt(lastGeneratedCode, structuredErrors);
+                    : _promptBuilder.BuildCorrectionPrompt(lastGeneratedCode, structuredErrors, relatedMethods);
 
                 var testRequest = new LLMRequestData { GeneratedPrompt = testPrompt, Config = _config };
                 var testResponse = await _llmService.GetResponseAsync(testRequest,_config.ShowAllLLmComm);
@@ -399,8 +453,14 @@ namespace LaundryNDishes.Core
             testEntry.LastEditTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
             Log($"Atualizando entrada no banco para o arquivo '{finalPath}'.");
-            EditorUtility.SetDirty(db);
-            AssetDatabase.SaveAssets();
+            EditorApplication.delayCall += () =>
+            {
+                if (db != null)
+                {
+                    EditorUtility.SetDirty(db);
+                    AssetDatabase.SaveAssets();
+                }
+            };
         }
 
         /// <summary>
