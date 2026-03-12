@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using LaundryNDishes.Core;
 using LaundryNDishes.UnityCore;
 using System.IO;
+using UnityEditor.Compilation;
 
 
 namespace LaundryNDishes.CLI
@@ -169,6 +170,39 @@ namespace LaundryNDishes.CLI
                     Type scriptType = script.GetClass();
                     if (scriptType == null) continue; // Pode ser uma interface ou enum
 
+                    string scriptAssemblyFile = CompilationPipeline.GetAssemblyNameFromScriptPath(assetPath);
+                    bool isPlayModeTest = config.PlayModeTestAssembly != null && scriptAssemblyFile == config.PlayModeTestAssembly.name + ".dll";
+                    bool isEditModeTest = config.EditorTestAssembly != null && scriptAssemblyFile == config.EditorTestAssembly.name + ".dll";
+
+                    if (isPlayModeTest || isEditModeTest)
+                    {
+                        Debug.Log($"[LnD CLI] Pulando {script.name} - É um script de teste (Verificação por Assembly).");
+                        continue;
+                    }
+    
+                    // 2. Filtro Bônus de Segurança (Pelo caminho físico das pastas de teste do Config)
+                    bool isInTestFolder = false;
+
+                    if (config.PlayModeTestAssembly != null)
+                    {
+                        string playModePath = AssetDatabase.GetAssetPath(config.PlayModeTestAssembly);
+                        string playModeDir = System.IO.Path.GetDirectoryName(playModePath).Replace("\\", "/");
+                        if (assetPath.StartsWith(playModeDir)) isInTestFolder = true;
+                    }
+
+                    if (config.EditorTestAssembly != null && !isInTestFolder)
+                    {
+                        string editorPath = AssetDatabase.GetAssetPath(config.EditorTestAssembly);
+                        string editorDir = System.IO.Path.GetDirectoryName(editorPath).Replace("\\", "/");
+                        if (assetPath.StartsWith(editorDir)) isInTestFolder = true;
+                    }
+
+                    if (isInTestFolder)
+                    {
+                        Debug.Log($"[LnD CLI] Pulando {script.name} - Script está dentro do diretório de testes configurado.");
+                        continue;
+                    }
+                    
                     bool isMonoBehaviour = typeof(MonoBehaviour).IsAssignableFrom(scriptType);
 
                     // Usa a classe utilitária que criamos antes para extrair os métodos!
