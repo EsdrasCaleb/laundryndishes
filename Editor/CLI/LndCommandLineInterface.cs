@@ -186,15 +186,21 @@ namespace LaundryNDishes.CLI
                     if (config.PlayModeTestAssembly != null)
                     {
                         string playModePath = AssetDatabase.GetAssetPath(config.PlayModeTestAssembly);
-                        string playModeDir = System.IO.Path.GetDirectoryName(playModePath).Replace("\\", "/");
-                        if (assetPath.StartsWith(playModeDir)) isInTestFolder = true;
+                        if (!string.IsNullOrEmpty(playModePath))
+                        {
+                            string playModeDir = Path.GetDirectoryName(playModePath).Replace("\\", "/");
+                            if (assetPath.StartsWith(playModeDir)) isInTestFolder = true;
+                        }
                     }
 
                     if (config.EditorTestAssembly != null && !isInTestFolder)
                     {
                         string editorPath = AssetDatabase.GetAssetPath(config.EditorTestAssembly);
-                        string editorDir = System.IO.Path.GetDirectoryName(editorPath).Replace("\\", "/");
-                        if (assetPath.StartsWith(editorDir)) isInTestFolder = true;
+                        if (!string.IsNullOrEmpty(editorPath))
+                        {
+                            string editorDir = Path.GetDirectoryName(editorPath).Replace("\\", "/");
+                            if (assetPath.StartsWith(editorDir)) isInTestFolder = true;
+                        }
                     }
 
                     if (isInTestFolder)
