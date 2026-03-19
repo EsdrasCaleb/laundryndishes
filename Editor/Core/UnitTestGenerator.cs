@@ -35,7 +35,7 @@ namespace LaundryNDishes.Core
         public event Action<string> OnProgressLog;
 
         public GeneratingStep CurrentStep { get; private set; } = GeneratingStep.Idle;
-        public bool? TestPassed { get; private set; } = null;
+        public int TestPassed { get; private set; } = 0;
         public string GeneratedTestCode { get; private set; }
 
         public bool SkipTestExecution { get; set; } = false;
@@ -99,7 +99,7 @@ namespace LaundryNDishes.Core
                     GeneratedTestCode = finalCode;
 
                     // ETAPA 4: Atualiza Banco de Dados (Passamos 'true' pois o arquivo compilou e salvou).
-                    UpdateTestDatabase(targetScript, extra, testType,true, GeneratedTestCode, finalPath);
+                    UpdateTestDatabase(targetScript, extra, testType,0, GeneratedTestCode, finalPath);
                     stopwatch.Stop();
                     generated = true;
                     
@@ -119,7 +119,7 @@ namespace LaundryNDishes.Core
                 }
             }
             CurrentStep = GeneratingStep.Finished;
-            UpdateTestDatabase(targetScript, extra, testType,false, null, null);
+            UpdateTestDatabase(targetScript, extra, testType,0, null, null);
             if (!string.IsNullOrEmpty(csvPath)&&!generated)
             {
                 Log($"Nao gerou com todas as {_config.MaxAttempts} tentativas");
@@ -168,15 +168,14 @@ namespace LaundryNDishes.Core
                 // ETAPA 5: Atualizar o Banco de Dados.
                 UpdateTestDatabase(targetScript, extra,testType, TestPassed, GeneratedTestCode, finalPath);
 
-                Log(TestPassed.HasValue && TestPassed.Value
+                Log(TestPassed>0
                     ? "5. Teste passou! Processo finalizado com sucesso."
                     : "5. O teste gerado falhou ou não pôde ser executado.");
             }
             catch (Exception ex)
             {
                 Log($"ERRO FATAL: {ex.Message}");
-                TestPassed = false;
-                UpdateTestDatabase(targetScript, extra,testType, false, null, null);
+                UpdateTestDatabase(targetScript, extra,testType, 0, null, null);
             }
             finally
             {
@@ -402,12 +401,12 @@ namespace LaundryNDishes.Core
             throw new Exception($"Não foi possível gerar um código de teste que compilasse após {_config.MaxCorrections} tentativas.");
         }
 
-        public async Task<bool?> ExecuteTestAsync(string code, string filePath, TestType testType)
+        public async Task<int> ExecuteTestAsync(string code, string filePath, TestType testType)
         {
             if (SkipTestExecution)
             {
                 Log("3. Pulando execução do teste (Modo CLI/Lote ativado).");
-                return true;
+                return 0;
             }
 
             CurrentStep = GeneratingStep.RunningTests;
@@ -426,10 +425,10 @@ namespace LaundryNDishes.Core
             await executor.Run(assemblyName, className,mode);
 
             Log($"Resultado do teste: {(executor.TestResult != null && executor.TestResult.Value.Passed ? "Passou" : "Falhou")}");
-            return executor.TestResult != null && executor.TestResult.Value.Passed;
+            return executor.TestResult != null ? executor.TestResult.Value.PassCount:0;
         }
 
-        private void UpdateTestDatabase(MonoScript targetScript, string extra, TestType testType, bool? testPassed, string generatedCode, string finalPath)
+        private void UpdateTestDatabase(MonoScript targetScript, string extra, TestType testType, int testPassed, string generatedCode, string finalPath)
         {
             CurrentStep = GeneratingStep.UpdatingDatabase;
             Log("4. Atualizando o banco de dados...");
@@ -454,8 +453,7 @@ namespace LaundryNDishes.Core
 
             // Atualiza os dados usando apenas o caminho da string!
             testEntry.GeneratedTestFilePath = finalPath; 
-            testEntry.passedInLastExecution = testPassed;
-            testEntry.LastEditTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            testEntry.passedTestCount = testPassed;
 
             Log($"Atualizando entrada no banco para o arquivo '{finalPath}'.");
             EditorApplication.delayCall += () =>

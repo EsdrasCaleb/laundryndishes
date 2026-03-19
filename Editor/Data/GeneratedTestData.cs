@@ -14,7 +14,7 @@ namespace LaundryNDishes.Data
         [Tooltip("O método (System Under Test) para o qual o teste foi gerado.")]
         public string SutMethod;
 
-        [Tooltip("O caminho relativo do arquivo de teste gerado.")]
+        [HideInInspector]
         public string GeneratedTestFilePath;
         
         [Tooltip("O arquivo de script de teste que foi gerado. A referência não quebra se o arquivo for renomeado.")]
@@ -22,10 +22,8 @@ namespace LaundryNDishes.Data
 
         public TestType type;
         
-        // Armazenamos como um Unix Timestamp (long) para robustez.
-        // Usaremos um Property Drawer para mostrá-lo de forma legível.
-        public long LastEditTimestamp;
-        public bool? passedInLastExecution;
+        public int numberOfTests;
+        public int passedTestCount;
 
         public GeneratedTestData(MonoScript script, string sutMethod, TestType type)
             : this(script, sutMethod,type, null, false)
@@ -38,8 +36,6 @@ namespace LaundryNDishes.Data
             SutMethod = sutMethod;
             type = testType;
             GeneratedTestScript = generatedTestScript;
-            LastEditTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            this.passedInLastExecution = passedInLastExecution;
         }
     }
 }

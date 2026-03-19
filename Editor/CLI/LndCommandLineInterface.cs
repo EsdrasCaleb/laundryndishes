@@ -363,7 +363,6 @@ namespace LaundryNDishes.CLI
                 {
                     var (passed, passCount, failCount) = executor.TestResult.Value;
                     
-                    testData.passedInLastExecution = passed;
                     dbNeedsSave = true;
 
                     string status = passed ? "PASSED" : "FAILED";

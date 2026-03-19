@@ -80,7 +80,7 @@ namespace LaundryNDishes.UI
             }
             else if (_generator != null && _generator.CurrentStep == UnitTestGenerator.GeneratingStep.Finished)
             {
-                if (_generator.TestPassed.HasValue && _generator.TestPassed.Value)
+                if ( _generator.TestPassed >0)
                 {
                     EditorGUILayout.HelpBox("Processo finalizado com sucesso! O teste passou.", MessageType.Info);
                 }

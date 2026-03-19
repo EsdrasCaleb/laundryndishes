@@ -1,70 +1,157 @@
 using UnityEditor;
 using UnityEngine;
-using System;
+using System.IO;
 using LaundryNDishes.Data;
+using LaundryNDishes.DomainAdapter; 
 
-namespace LaundryNDishes.UI // Use um namespace de UI
+namespace LaundryNDishes.UI
 {
-// Este atributo diz à Unity para usar esta classe para desenhar qualquer campo do tipo GeneratedTestData.
     [CustomPropertyDrawer(typeof(GeneratedTestData))]
     public class GeneratedTestDataDrawer : PropertyDrawer
     {
-        // Este método redesenha a UI padrão para um campo [Serializable]
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
             EditorGUI.BeginProperty(position, label, property);
 
-            // Abre um "foldout" (a setinha para expandir/recolher)
-            property.isExpanded =
-                EditorGUI.Foldout(new Rect(position.x, position.y, position.width, EditorGUIUtility.singleLineHeight),
-                    property.isExpanded, label);
+            property.isExpanded = EditorGUI.Foldout(
+                new Rect(position.x, position.y, position.width, EditorGUIUtility.singleLineHeight),
+                property.isExpanded, label);
 
             if (property.isExpanded)
             {
                 EditorGUI.indentLevel++;
 
-                // Pega as propriedades filhas pelo nome da variável na classe
+                // Puxa as propriedades
                 var targetScriptProp = property.FindPropertyRelative("TargetScript");
                 var sutMethodProp = property.FindPropertyRelative("SutMethod");
                 var generatedTestScriptProp = property.FindPropertyRelative("GeneratedTestScript");
-                var timestampProp = property.FindPropertyRelative("LastEditTimestamp");
+                var typeProp = property.FindPropertyRelative("type");
+                var numberOfTestsProp = property.FindPropertyRelative("numberOfTests");
+                var passedTestCountProp = property.FindPropertyRelative("passedTestCount");
 
-                // Desenha os campos de MonoScript e string normalmente
+                // Desenha os campos básicos
                 EditorGUILayout.PropertyField(targetScriptProp);
                 EditorGUILayout.PropertyField(sutMethodProp);
                 EditorGUILayout.PropertyField(generatedTestScriptProp);
+                // --- BLOQUEIA A EDIÇÃO DO TIPO ---
+                EditorGUI.BeginDisabledGroup(true); // Tudo abaixo disso fica cinza (read-only)
+                EditorGUILayout.PropertyField(typeProp);
+                EditorGUI.EndDisabledGroup();       // Volta ao normal para os próximos botões
 
-                // --- A MÁGICA ACONTECE AQUI ---
-                // Pega o valor do timestamp (long)
-                long timestamp = timestampProp.longValue;
-                // Converte para DateTime para exibição
-                DateTime dateTime = DateTimeOffset.FromUnixTimeSeconds(timestamp).LocalDateTime;
+                // Mostra o resultado da última execução
+                EditorGUILayout.LabelField("Last Result", $"{passedTestCountProp.intValue} passed / {numberOfTestsProp.intValue} total");
 
-                // Exibe a data legível, mas o campo não é editável diretamente.
-                // O dado real (o long) permanece intacto.
-                EditorGUILayout.LabelField("Last Edit", dateTime.ToString("dd/MM/yyyy HH:mm:ss"));
-
-                // Botão para atualizar o timestamp para o momento atual
-                if (GUILayout.Button("Update Timestamp"))
+                // --- ALERTA DE DESATUALIZAÇÃO ---
+                if (IsSutNewer(targetScriptProp, generatedTestScriptProp))
                 {
-                    timestampProp.longValue = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    EditorGUILayout.HelpBox("Atenção: O script original (SUT) foi modificado mais recentemente do que este teste. O teste pode estar desatualizado!", MessageType.Warning);
                 }
 
+                // --- BOTÕES ---
+                EditorGUILayout.BeginHorizontal();
+
+                // 1. Atualizar Tipo (Refaz o elo)
+                if (GUILayout.Button("Update Type"))
+                {
+                    var script = generatedTestScriptProp.objectReferenceValue as MonoScript;
+                    if (script != null)
+                    {
+                        string path = AssetDatabase.GetAssetPath(script);
+                        string assemblyName = UnityEditor.Compilation.CompilationPipeline.GetAssemblyNameFromScriptPath(path);
+                        
+                        if (!string.IsNullOrEmpty(assemblyName) && assemblyName.Contains("PlayMode"))
+                        {
+                            typeProp.enumValueIndex = (int)TestType.Behavior; 
+                        }
+                        else
+                        {
+                            typeProp.enumValueIndex = (int)TestType.Unitieditor; 
+                        }
+                        Debug.Log($"[LnD] Tipo atualizado baseado no assembly: {assemblyName}");
+                    }
+                }
+
+                // 2. Rodar Teste
+                if (GUILayout.Button("Run Test"))
+                {
+                    var script = generatedTestScriptProp.objectReferenceValue as MonoScript;
+                    if (script != null)
+                    {
+                        string path = AssetDatabase.GetAssetPath(script);
+                        string assemblyFile = UnityEditor.Compilation.CompilationPipeline.GetAssemblyNameFromScriptPath(path);
+                        string assemblyName = assemblyFile.Replace(".dll", "");
+                        string className = script.GetClass()?.FullName ?? script.name;
+                        
+                        var mode = (typeProp.enumNames[typeProp.enumValueIndex] == "Unitieditor") 
+                                    ? UnityEditor.TestTools.TestRunner.Api.TestMode.EditMode 
+                                    : UnityEditor.TestTools.TestRunner.Api.TestMode.PlayMode;
+
+                        RunTestFireAndForget(assemblyName, className, mode, numberOfTestsProp, passedTestCountProp, property.serializedObject);
+                    }
+                }
+
+                EditorGUILayout.EndHorizontal();
                 EditorGUI.indentLevel--;
             }
 
             EditorGUI.EndProperty();
         }
 
-        // Precisamos ajustar a altura do nosso drawer para comportar os campos extras quando expandido.
+        // Helper para checar as datas dos arquivos
+        private bool IsSutNewer(SerializedProperty targetProp, SerializedProperty testProp)
+        {
+            var targetScript = targetProp.objectReferenceValue as MonoScript;
+            var testScript = testProp.objectReferenceValue as MonoScript;
+
+            if (targetScript != null && testScript != null)
+            {
+                string targetPath = AssetDatabase.GetAssetPath(targetScript);
+                string testPath = AssetDatabase.GetAssetPath(testScript);
+
+                if (File.Exists(targetPath) && File.Exists(testPath))
+                {
+                    return File.GetLastWriteTime(targetPath) > File.GetLastWriteTime(testPath);
+                }
+            }
+            return false;
+        }
+
+        // Método auxiliar para rodar o teste
+        private async void RunTestFireAndForget(string assemblyName, string className, UnityEditor.TestTools.TestRunner.Api.TestMode mode, SerializedProperty numTests, SerializedProperty passedTests, SerializedObject serializedObj)
+        {
+            var executor = new TestExecutor();
+            await executor.Run(assemblyName, className, mode);
+
+            if (executor.TestResult.HasValue)
+            {
+                var (_, passCount, failCount) = executor.TestResult.Value;
+                
+                serializedObj.Update();
+                numTests.intValue = passCount + failCount;
+                passedTests.intValue = passCount;
+                serializedObj.ApplyModifiedProperties();
+                
+                Debug.Log($"[LnD] Teste individual finalizado! Passaram: {passCount}, Falharam: {failCount}");
+            }
+        }
+
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {
             if (property.isExpanded)
             {
-                // Altura do foldout + 4 campos + 1 botão + espaçamento
-                return EditorGUIUtility.singleLineHeight * 7 + 5;
+                float height = EditorGUIUtility.singleLineHeight * 7 + 10;
+                
+                // Se o alerta estiver visível, precisamos aumentar a altura da caixa do inspetor
+                var targetScriptProp = property.FindPropertyRelative("TargetScript");
+                var generatedTestScriptProp = property.FindPropertyRelative("GeneratedTestScript");
+                
+                if (IsSutNewer(targetScriptProp, generatedTestScriptProp))
+                {
+                    height += 40; // Altura aproximada do HelpBox com duas linhas
+                }
+                
+                return height; 
             }
-
             return EditorGUIUtility.singleLineHeight;
         }
     }
