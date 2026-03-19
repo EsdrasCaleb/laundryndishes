@@ -1,8 +1,7 @@
 using UnityEditor;
-using System.Linq;
 using UnityEngine;
 
-namespace LaundryNDishes.Core
+namespace com.esdrascaleb.laundryndishes.Editor.UnityCore
 {
     /// <summary>
     /// Esta classe atua como um "zelador", monitorando a exclusão de assets
@@ -22,7 +21,7 @@ namespace LaundryNDishes.Core
             }
 
             // 2. Carrega a instância do nosso banco de dados.
-            var db = UnityCore.TestDatabase.Instance;
+            var db = LaundryNDishes.UnityCore.TestDatabase.Instance;
             if (db == null || db.AllTests == null || db.AllTests.Count == 0)
             {
                 return AssetDeleteResult.DidNotDelete;

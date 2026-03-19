@@ -17,10 +17,10 @@ namespace LaundryNDishes.UI
         {
             public string Name;
             public bool IsSelected;
-            public PromptType Type;
+            public TestType Type;
             public bool HasExistingTest;
 
-            public SelectableMethod(string name, PromptType type, bool hasExistingTest)
+            public SelectableMethod(string name, TestType type, bool hasExistingTest)
             {
                 Name = name;
                 Type = type;
@@ -210,7 +210,7 @@ namespace LaundryNDishes.UI
                 foreach (var method in allEligibleMethods)
                 {
                     bool exists = activeDb != null && activeDb.HasTestForMethod(_targetScript, method);
-                    _allMethods.Add(new SelectableMethod(method, PromptType.Uniti, exists));
+                    _allMethods.Add(new SelectableMethod(method, TestType.Uniti, exists));
                 }
             }
             else
@@ -219,13 +219,13 @@ namespace LaundryNDishes.UI
                 foreach (var method in unitMethods)
                 {
                     bool exists = activeDb != null && activeDb.HasTestForMethod(_targetScript, method);
-                    _allMethods.Add(new SelectableMethod(method, PromptType.Uniti, exists));
+                    _allMethods.Add(new SelectableMethod(method, TestType.Uniti, exists));
                 }
 
                 foreach (var method in behaviorMethods)
                 {
                     bool exists = activeDb != null && activeDb.HasTestForMethod(_targetScript, method);
-                    _allMethods.Add(new SelectableMethod(method, PromptType.Behavior, exists));
+                    _allMethods.Add(new SelectableMethod(method, TestType.Behavior, exists));
                 }
             }
 

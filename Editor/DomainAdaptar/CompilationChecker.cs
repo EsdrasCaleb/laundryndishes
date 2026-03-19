@@ -9,7 +9,7 @@ using UnityEngine;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
-namespace LaundryNDishes.TestRunner
+namespace LaundryNDishes.DomainAdapter
 {
     public struct CompilationError
     {

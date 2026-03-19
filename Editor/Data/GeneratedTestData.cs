@@ -20,20 +20,23 @@ namespace LaundryNDishes.Data
         [Tooltip("O arquivo de script de teste que foi gerado. A referência não quebra se o arquivo for renomeado.")]
         public MonoScript GeneratedTestScript;
 
+        public TestType type;
+        
         // Armazenamos como um Unix Timestamp (long) para robustez.
         // Usaremos um Property Drawer para mostrá-lo de forma legível.
         public long LastEditTimestamp;
         public bool? passedInLastExecution;
 
-        public GeneratedTestData(MonoScript script, string sutMethod)
-            : this(script, sutMethod, null, false)
+        public GeneratedTestData(MonoScript script, string sutMethod, TestType type)
+            : this(script, sutMethod,type, null, false)
         {
         }
 
-        public GeneratedTestData(MonoScript script, string sutMethod, MonoScript generatedTestScript, bool passedInLastExecution)
+        public GeneratedTestData(MonoScript script, string sutMethod, TestType testType, MonoScript generatedTestScript, bool passedInLastExecution)
         {
             TargetScript = script;
             SutMethod = sutMethod;
+            type = testType;
             GeneratedTestScript = generatedTestScript;
             LastEditTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             this.passedInLastExecution = passedInLastExecution;

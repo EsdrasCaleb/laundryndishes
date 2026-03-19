@@ -4,7 +4,7 @@ using UnityEditor;
 using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
 
-namespace LaundryNDishes.TestRunner
+namespace LaundryNDishes.DomainAdapter
 {
     public class TestExecutor
     {
@@ -13,10 +13,10 @@ namespace LaundryNDishes.TestRunner
         
         public bool IsDone => CurrentState == State.Finished;
         
-        // --- Resultado ---
-        public bool? TestPassed { get; private set; }
+        // --- MODIFICADO: Agora expõe os contadores exatos ---
+        public (bool Passed, int PassCount, int FailCount)? TestResult { get; private set; }
 
-        public async Task Run(string assemblyName, string className)
+        public async Task Run(string assemblyName, string className, TestMode mode)
         {
             if (CurrentState != State.Idle)
             {
@@ -29,7 +29,7 @@ namespace LaundryNDishes.TestRunner
             {
                 var filter = new Filter
                 {
-                    testMode = TestMode.PlayMode,
+                    testMode = mode, // Usa o modo passado por parâmetro
                     assemblyNames = new[] { assemblyName },
                     testNames = new[] { className }
                 };
@@ -39,12 +39,12 @@ namespace LaundryNDishes.TestRunner
                 api.RegisterCallbacks(testCallbacks);
                 api.Execute(new ExecutionSettings(filter));
 
-                TestPassed = await testCallbacks.CompletionSource.Task;
+                TestResult = await testCallbacks.CompletionSource.Task;
             }
             catch (Exception ex)
             {
                 Debug.LogException(ex);
-                TestPassed = false;
+                TestResult = (false, 0, 0);
             }
             finally
             {
@@ -54,8 +54,15 @@ namespace LaundryNDishes.TestRunner
         
         private class TestResultCallback : ICallbacks
         {
-            public readonly TaskCompletionSource<bool> CompletionSource = new TaskCompletionSource<bool>();
-            public void RunFinished(ITestResultAdaptor result) => CompletionSource.TrySetResult(result.PassCount > 0 && result.FailCount == 0 && result.InconclusiveCount == 0);
+            // Alterado para capturar a tupla de resultados
+            public readonly TaskCompletionSource<(bool, int, int)> CompletionSource = new TaskCompletionSource<(bool, int, int)>();
+            
+            public void RunFinished(ITestResultAdaptor result) 
+            {
+                bool passed = result.PassCount > 0 && result.FailCount == 0 && result.InconclusiveCount == 0;
+                CompletionSource.TrySetResult((passed, result.PassCount, result.FailCount));
+            }
+            
             public void RunStarted(ITestAdaptor testsToRun) {}
             public void TestStarted(ITestAdaptor test) {}
             public void TestFinished(ITestResultAdaptor result) {}

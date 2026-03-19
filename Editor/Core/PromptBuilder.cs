@@ -9,8 +9,6 @@ using UnityEngine;
 
 namespace LaundryNDishes.Core
 {
-    public enum PromptType { Uniti, Behavior, Integration, Unitieditor }
-
     public class PromptBuilder
     {
         private readonly Dictionary<string, Template> _templateCache = new Dictionary<string, Template>();
@@ -26,16 +24,16 @@ namespace LaundryNDishes.Core
             _defaultTemplatesPath = Path.Combine(editorPath, "Templates");
         }
 
-        public Prompt BuildIntentionPrompt(PromptType promptType, string sutClass, string[] sutRelatedMethods, string extra)
+        public Prompt BuildIntentionPrompt(TestType testType, string sutClass, string[] sutRelatedMethods, string extra)
         {
             var data = new ScriptObject { ["sut_class"] = sutClass, ["sut_related_methods"] = sutRelatedMethods, ["extra"] = extra };
-            return BuildPromptFromTemplates(promptType, "Intention", data);
+            return BuildPromptFromTemplates(testType, "Intention", data);
         }
 
-        public Prompt BuildGeneratorPrompt(PromptType promptType, string intention, string sutClass, string[] sutRelatedMethods, string extra)
+        public Prompt BuildGeneratorPrompt(TestType testType, string intention, string sutClass, string[] sutRelatedMethods, string extra)
         {
             var data = new ScriptObject { ["intention"] = intention, ["sut_class"] = sutClass, ["sut_related_methods"] = sutRelatedMethods, ["extra"] = extra };
-            return BuildPromptFromTemplates(promptType, "Generator", data);
+            return BuildPromptFromTemplates(testType, "Generator", data);
         }
 
         public Prompt BuildCorrectionPrompt(string code, string errors, string[] sutRelatedMethods)
@@ -48,11 +46,11 @@ namespace LaundryNDishes.Core
             return BuildPromptFromTemplateNames(userTemplate, data,systemTemplate);
         }
 
-        private Prompt BuildPromptFromTemplates(PromptType promptType, string baseName, ScriptObject data)
+        private Prompt BuildPromptFromTemplates(TestType testType, string baseName, ScriptObject data)
         {
             // Monta o nome do arquivo com o prefixo do tipo de prompt.
-            string systemTemplate = $"{promptType.ToString()}_{baseName}_System.scriban";
-            string userTemplate = $"{promptType.ToString()}_{baseName}_User.scriban";
+            string systemTemplate = $"{testType.ToString()}_{baseName}_System.scriban";
+            string userTemplate = $"{testType.ToString()}_{baseName}_User.scriban";
 
             
             return BuildPromptFromTemplateNames(userTemplate, data,systemTemplate);

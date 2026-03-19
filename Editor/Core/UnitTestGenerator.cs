@@ -8,11 +8,12 @@ using System.Threading.Tasks;
 using UnityEditor;
 using LaundryNDishes.UnityCore;
 using LaundryNDishes.Data;
-using LaundryNDishes.TestRunner;
+using LaundryNDishes.DomainAdapter;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using UnityEditor.Compilation;
+using UnityEditor.TestTools.TestRunner.Api;
 using Debug = UnityEngine.Debug;
 
 namespace LaundryNDishes.Core
@@ -62,7 +63,7 @@ namespace LaundryNDishes.Core
         /// <summary>
         /// O método principal, usado pela CLI (apenas gera e salva, não roda os testes).
         /// </summary>
-        public async Task Generate(MonoScript targetScript, string extra, PromptType promptType, string csvPath = null)
+        public async Task Generate(MonoScript targetScript, string extra, TestType testType, string csvPath = null)
         {
             if (DoesTestExist(targetScript, extra))
             {
@@ -81,15 +82,15 @@ namespace LaundryNDishes.Core
                     string classSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
         
                     // ETAPA 1: Obter a intenção do método.
-                    string intention = await GetIntentionAsync(promptType, classSource, extra);
+                    string intention = await GetIntentionAsync(testType, classSource, extra);
 
                     // ETAPA 2: Gerar e validar o código (na pasta Temp).
-                    string folder = promptType == PromptType.Unitieditor
+                    string folder = testType == TestType.Unitieditor
                         ? _config.EditorTestScriptsFolder
                         : _config.PlayTestDestinationFolder;
 
                     var (rawCompiledCode, correctionsMade) =
-                        await GenerateAndCompileCodeAsync(promptType, targetScript, extra, intention, folder);
+                        await GenerateAndCompileCodeAsync(testType, targetScript, extra, intention, folder);
                     corrections += correctionsMade;
                     // ETAPA 3: Salvar o arquivo final. (Ele renomeia a classe para bater com o nome do arquivo).
                     CurrentStep = GeneratingStep.SavingFile;
@@ -98,7 +99,7 @@ namespace LaundryNDishes.Core
                     GeneratedTestCode = finalCode;
 
                     // ETAPA 4: Atualiza Banco de Dados (Passamos 'true' pois o arquivo compilou e salvou).
-                    UpdateTestDatabase(targetScript, extra, true, GeneratedTestCode, finalPath);
+                    UpdateTestDatabase(targetScript, extra, testType,true, GeneratedTestCode, finalPath);
                     stopwatch.Stop();
                     generated = true;
                     
@@ -106,7 +107,7 @@ namespace LaundryNDishes.Core
                     {
                         // SUTClass, SUTMethod, TestType, TestFile, NumberOfCorrections, TimeToGenerate
                         string csvLine =
-                            $"{targetScript.name},{extra},{promptType},{finalPath},{corrections},{attempts},{stopwatch.ElapsedMilliseconds},SUCESS\n";
+                            $"{targetScript.name},{extra},{testType},{finalPath},{corrections},{attempts},{stopwatch.ElapsedMilliseconds},SUCESS\n";
                         File.AppendAllText(csvPath, csvLine); // Append garante que adiciona no final
                     }
                     break;
@@ -118,13 +119,13 @@ namespace LaundryNDishes.Core
                 }
             }
             CurrentStep = GeneratingStep.Finished;
-            UpdateTestDatabase(targetScript, extra, false, null, null);
+            UpdateTestDatabase(targetScript, extra, testType,false, null, null);
             if (!string.IsNullOrEmpty(csvPath)&&!generated)
             {
                 Log($"Nao gerou com todas as {_config.MaxAttempts} tentativas");
                 stopwatch.Stop();
                 // SUTClass, SUTMethod, TestType, TestFile, NumberOfCorrections, TimeToGenerate
-                string csvLine = $"{targetScript.name},{extra},{promptType},-,{corrections},{attempts},{stopwatch.ElapsedMilliseconds},FAILURE\n";
+                string csvLine = $"{targetScript.name},{extra},{testType},-,{corrections},{attempts},{stopwatch.ElapsedMilliseconds},FAILURE\n";
                 File.AppendAllText(csvPath, csvLine); // Append garante que adiciona no final
             }
         }
@@ -132,7 +133,7 @@ namespace LaundryNDishes.Core
         /// <summary>
         /// Método usado pela UI do Editor (Gera, Salva e RODA o teste físico).
         /// </summary>
-        public async Task GenerateAndTest(MonoScript targetScript, string extra, PromptType promptType)
+        public async Task GenerateAndTest(MonoScript targetScript, string extra, TestType testType)
         {
             if (DoesTestExist(targetScript, extra))
             {
@@ -144,14 +145,14 @@ namespace LaundryNDishes.Core
                 string classSource = File.ReadAllText(AssetDatabase.GetAssetPath(targetScript));
 
                 // ETAPA 1: Obter a intenção.
-                string intention = await GetIntentionAsync(promptType, classSource, extra);
+                string intention = await GetIntentionAsync(testType, classSource, extra);
 
                 // ETAPA 2: Gerar e validar.
-                string folder = promptType == PromptType.Unitieditor 
+                string folder = testType == TestType.Unitieditor 
                     ? _config.EditorTestScriptsFolder 
                     : _config.PlayTestDestinationFolder;
 
-                var (rawCompiledCode,ties) = await GenerateAndCompileCodeAsync(promptType, targetScript, extra, intention, folder);
+                var (rawCompiledCode,ties) = await GenerateAndCompileCodeAsync(testType, targetScript, extra, intention, folder);
 
                 // ETAPA 3: Salvar o arquivo final e importar para a Unity reconhecer a nova classe.
                 CurrentStep = GeneratingStep.SavingFile;
@@ -162,10 +163,10 @@ namespace LaundryNDishes.Core
                 AssetDatabase.Refresh();
 
                 // ETAPA 4: Executar o teste gerado a partir do arquivo salvo.
-                TestPassed = await ExecuteTestAsync(GeneratedTestCode, finalPath);
+                TestPassed = await ExecuteTestAsync(GeneratedTestCode, finalPath,testType);
 
                 // ETAPA 5: Atualizar o Banco de Dados.
-                UpdateTestDatabase(targetScript, extra, TestPassed, GeneratedTestCode, finalPath);
+                UpdateTestDatabase(targetScript, extra,testType, TestPassed, GeneratedTestCode, finalPath);
 
                 Log(TestPassed.HasValue && TestPassed.Value
                     ? "5. Teste passou! Processo finalizado com sucesso."
@@ -175,7 +176,7 @@ namespace LaundryNDishes.Core
             {
                 Log($"ERRO FATAL: {ex.Message}");
                 TestPassed = false;
-                UpdateTestDatabase(targetScript, extra, false, null, null);
+                UpdateTestDatabase(targetScript, extra,testType, false, null, null);
             }
             finally
             {
@@ -319,11 +320,11 @@ namespace LaundryNDishes.Core
             return relatedContexts.ToArray();
         }
         
-        public async Task<string> GetIntentionAsync(PromptType promptType, string classSource, string extra)
+        public async Task<string> GetIntentionAsync(TestType testType, string classSource, string extra)
         {
             CurrentStep = GeneratingStep.GettingIntention;
             Log("1. Gerando intenção do método...");
-            Prompt intentionPrompt = _promptBuilder.BuildIntentionPrompt(promptType, classSource, null, extra);
+            Prompt intentionPrompt = _promptBuilder.BuildIntentionPrompt(testType, classSource, null, extra);
             var intentionRequest = new LLMRequestData { GeneratedPrompt = intentionPrompt, Config = _config };
             var intentionResponse = await _llmService.GetResponseAsync(intentionRequest,_config.ShowAllLLmComm);
 
@@ -337,7 +338,7 @@ namespace LaundryNDishes.Core
         /// <summary>
         /// ETAPA 2: Retorna APENAS o código como string. A compilação acontece isolada na Temp.
         /// </summary>
-        public async Task<(string Code, int Corrections)> GenerateAndCompileCodeAsync(PromptType promptType, 
+        public async Task<(string Code, int Corrections)> GenerateAndCompileCodeAsync(TestType testType, 
             MonoScript targetScript, string method, string initialIntention, string destinationFolder)        {
             string lastGeneratedCode = "";
             string structuredErrors = "";
@@ -360,7 +361,7 @@ namespace LaundryNDishes.Core
 
                 Prompt testPrompt = (i == 0)
                     // Passamos o 'reducedClassSource' no lugar do código original e o 'relatedMethods' no lugar do null
-                    ? _promptBuilder.BuildGeneratorPrompt(promptType, initialIntention, reducedClassSource, relatedMethods, method)
+                    ? _promptBuilder.BuildGeneratorPrompt(testType, initialIntention, reducedClassSource, relatedMethods, method)
                     : _promptBuilder.BuildCorrectionPrompt(lastGeneratedCode, structuredErrors, relatedMethods);
 
                 var testRequest = new LLMRequestData { GeneratedPrompt = testPrompt, Config = _config };
@@ -374,7 +375,7 @@ namespace LaundryNDishes.Core
                 string tempFileNameBase = $"{targetScript.name}_{method}";
                 
                 // O validador usa a pasta Temp internamente, o 'destinationFolder' só serve pro nome do arquivo (se ele usar).
-                await checker.Run(lastGeneratedCode, tempFileNameBase, destinationFolder,_config,promptType==PromptType.Unitieditor);
+                await checker.Run(lastGeneratedCode, tempFileNameBase, destinationFolder,_config,testType==TestType.Unitieditor);
 
                 bool hasReimplementedSUT = ScriptMethodAnalyzer.HasReimplementedType(lastGeneratedCode,targetScript.name);
                     
@@ -401,7 +402,7 @@ namespace LaundryNDishes.Core
             throw new Exception($"Não foi possível gerar um código de teste que compilasse após {_config.MaxCorrections} tentativas.");
         }
 
-        public async Task<bool?> ExecuteTestAsync(string code, string filePath)
+        public async Task<bool?> ExecuteTestAsync(string code, string filePath, TestType testType)
         {
             if (SkipTestExecution)
             {
@@ -417,14 +418,18 @@ namespace LaundryNDishes.Core
             
             // Agora o filePath é o arquivo final dentro da pasta Assets, então o Unity já sabe qual é o assembly.
             string assemblyName = CompilationPipeline.GetAssemblyNameFromScriptPath(filePath);
+            TestMode mode = TestMode.PlayMode;
+            if (testType == TestType.Unitieditor)
+            {
+                mode = TestMode.EditMode;
+            }
+            await executor.Run(assemblyName, className,mode);
 
-            await executor.Run(assemblyName, className);
-
-            Log($"Resultado do teste: {(executor.TestPassed.HasValue && executor.TestPassed.Value ? "Passou" : "Falhou")}");
-            return executor.TestPassed;
+            Log($"Resultado do teste: {(executor.TestResult != null && executor.TestResult.Value.Passed ? "Passou" : "Falhou")}");
+            return executor.TestResult != null && executor.TestResult.Value.Passed;
         }
 
-        private void UpdateTestDatabase(MonoScript targetScript, string extra, bool? testPassed, string generatedCode, string finalPath)
+        private void UpdateTestDatabase(MonoScript targetScript, string extra, TestType testType, bool? testPassed, string generatedCode, string finalPath)
         {
             CurrentStep = GeneratingStep.UpdatingDatabase;
             Log("4. Atualizando o banco de dados...");
@@ -443,7 +448,7 @@ namespace LaundryNDishes.Core
 
             if (testEntry == null)
             {
-                testEntry = new GeneratedTestData(targetScript, extra);
+                testEntry = new GeneratedTestData(targetScript, extra,testType);
                 db.AllTests.Add(testEntry);
             }
 
