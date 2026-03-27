@@ -16,7 +16,7 @@ namespace LaundryNDishes.DomainAdapter
         // --- MODIFICADO: Agora expõe os contadores exatos ---
         public (bool Passed, int PassCount, int FailCount)? TestResult { get; private set; }
 
-        public async Task Run(string assemblyName, string className, TestMode mode)
+        public async Task Run(string assemblyName, string className, TestMode mode, string[] specificTestNames = null)
         {
             if (CurrentState != State.Idle)
             {
@@ -27,11 +27,15 @@ namespace LaundryNDishes.DomainAdapter
             CurrentState = State.Running;
             try
             {
+                string[] namesToRun = specificTestNames != null && specificTestNames.Length > 0 
+                    ? specificTestNames 
+                    : new[] { className };
+
                 var filter = new Filter
                 {
-                    testMode = mode, // Usa o modo passado por parâmetro
+                    testMode = mode,
                     assemblyNames = new[] { assemblyName },
-                    testNames = new[] { className }
+                    testNames = namesToRun 
                 };
                 
                 var testCallbacks = new TestResultCallback();

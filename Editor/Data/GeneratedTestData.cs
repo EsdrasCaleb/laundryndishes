@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEngine; // Necessário para MonoScript
 
@@ -22,9 +24,12 @@ namespace LaundryNDishes.Data
 
         public TestType type;
         
-        public int numberOfTests;
-        public int passedTestCount;
+        public int numberOfTests=>IndividualTests.Count;
+        public int passedTestCount=>IndividualTests.Count(test => test.Status == SingleTestStatus.Passed);
 
+        
+        public List<IndividualTestResult> IndividualTests = new List<IndividualTestResult>();
+        
         public GeneratedTestData(MonoScript script, string sutMethod, TestType type)
             : this(script, sutMethod,type, null, false)
         {

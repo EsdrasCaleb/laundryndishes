@@ -10,7 +10,7 @@ public class GameManager : MonoBehaviour
     public GameObject brickPrefab;
     public float brickWidth = 1.5f;  // Largura do brick (ajuste no Inspector)
     public float brickHeight = 0.5f; // Altura do brick (ajuste no Inspector)
-    public float padding = 0.2f;     // Espaço mínimo entre bricks
+    public float padding = 0.05f;     // Espaço mínimo entre bricks
     public Vector2 minMaxX = new Vector2(-7f, 7f);
     public Vector2 minMaxY = new Vector2(2f, 6f);
     public GameObject nextLevelPanel;
@@ -25,48 +25,46 @@ public class GameManager : MonoBehaviour
 
     void SetupLevel()
     {
-        bricksRemaining = bricksPerLevel;
-        List<Vector2> occupiedPositions = new List<Vector2>();
+        bricksRemaining = bricksPerLevel / 2;
+        // Centralized matrix setup with 1.5 width and 0.5 height
+        float spacing = padding; // Small gap between bricks
+        // Calculate grid dimensions based on minMaxX and minMaxY area
+        float areaWidth = minMaxX.y - minMaxX.x;
+        float areaHeight = minMaxY.y - minMaxY.x;
 
+        int cols = Mathf.Max(1, Mathf.FloorToInt(areaWidth / (brickWidth + spacing)));
+        int rows = Mathf.Max(1, Mathf.FloorToInt(areaHeight / (brickHeight + spacing)));
+
+        // Create list of all available positions in the matrix
+        List<Vector2> availablePositions = new List<Vector2>();
+
+        for (int row = 0; row < rows; row++)
+        {
+            for (int col = 0; col < cols; col++)
+            {
+                Vector2 pos = new Vector2(
+                    minMaxX.x + col * (brickWidth + spacing) + (brickWidth + spacing) / 2f,
+                    minMaxY.x + row * (brickHeight + spacing) + (brickHeight + spacing) / 2f
+                );
+                availablePositions.Add(pos);
+            }
+        }
+
+        // Shuffle the available positions and place bricks
+        System.Random rng = new System.Random();
         for (int i = 0; i < bricksPerLevel; i++)
         {
-            Vector2 newPos;
-            int attempts = 0;
-            do
+            int index = rng.Next(availablePositions.Count);
+            if (index > 0)
             {
-                newPos = new Vector2(
-                    Random.Range(minMaxX.x, minMaxX.y - brickWidth),
-                    Random.Range(minMaxY.x, minMaxY.y - brickHeight)
-                );
-                attempts++;
-                if (attempts > 100) // Evita loop infinito
-                {
-                    Debug.LogWarning("Não foi possível encontrar uma posição válida para o brick.");
-                    break;
-                }
+                Vector2 pos = availablePositions[index];
+                availablePositions.RemoveAt(index);
+                Instantiate(brickPrefab, pos, Quaternion.identity);
             }
-            while (IsOverlapping(newPos, occupiedPositions));
-
-            if (attempts <= 100)
-            {
-                occupiedPositions.Add(newPos);
-                Instantiate(brickPrefab, newPos, Quaternion.identity);
-            }
+            //Debug.Log(pos);
         }
     }
 
-    bool IsOverlapping(Vector2 newPos, List<Vector2> occupiedPositions)
-    {
-        foreach (Vector2 pos in occupiedPositions)
-        {
-            if (Mathf.Abs(newPos.x - pos.x) < brickWidth + padding &&
-                Mathf.Abs(newPos.y - pos.y) < brickHeight + padding)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
 
     public void BrickDestroyed()
     {

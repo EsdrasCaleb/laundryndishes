@@ -453,7 +453,7 @@ namespace LaundryNDishes.Core
 
             // Atualiza os dados usando apenas o caminho da string!
             testEntry.GeneratedTestFilePath = finalPath; 
-            testEntry.passedTestCount = testPassed;
+            //testEntry.passedTestCount = testPassed;
 
             Log($"Atualizando entrada no banco para o arquivo '{finalPath}'.");
             EditorApplication.delayCall += () =>
