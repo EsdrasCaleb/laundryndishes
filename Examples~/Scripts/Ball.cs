@@ -1,38 +1,56 @@
 using UnityEngine;
 
-[RequireComponent(typeof(Rigidbody))]
+[RequireComponent(typeof(Rigidbody2D))]
 public class Ball : MonoBehaviour
 {
-    public float speed = 5f;
-    private Rigidbody rb;
-    public bool isLaunched = false;
+    public float initialSpeed = 5f;
+    public float minSpeed = 3f;
+    public float maxSpeed = 10f;
+    public Rigidbody2D rb;
+    public bool isStoped = true;
 
-    void Start()
+    // VARIÁVEL NOVA: Para guardar a velocidade antes da colisão
+    public Vector2 lastVelocity;
+
+    private Paddle paddle;
+
+    void Awake()
     {
-        rb = GetComponent<Rigidbody>();
-        ResetBall();
+        rb = GetComponent<Rigidbody2D>();
     }
 
-    void Update()
+    void FixedUpdate()
     {
-        if (!isLaunched && Input.GetKeyDown(KeyCode.Space))
+        if (!isStoped)
         {
-            LaunchBall();
+            Vector2 currentVelocity = rb.linearVelocity;
+
+            // Ensure Y velocity is not 0
+            if (currentVelocity.y == 0)
+            {
+                currentVelocity.y = Mathf.Sign(currentVelocity.x) * 0.1f; // Add a small non-zero Y velocity
+                currentVelocity = currentVelocity.normalized * currentVelocity.magnitude; // Maintain original magnitude
+            }
+
+            // Garante velocidade mínima
+            if (currentVelocity.magnitude < minSpeed)
+            {
+                if (currentVelocity == Vector2.zero)
+                    currentVelocity = Vector2.up * minSpeed;
+                else
+                    currentVelocity = currentVelocity.normalized * minSpeed;
+            }
+
+            // Garante velocidade máxima
+            if (currentVelocity.magnitude > maxSpeed)
+            {
+                currentVelocity = currentVelocity.normalized * maxSpeed;
+            }
+
+            rb.linearVelocity = currentVelocity;
+
+            // SALVA A VELOCIDADE ATUAL PARA USAR NO PRÓXIMO FRAME (Caso haja colisão)
+            lastVelocity = rb.linearVelocity;
         }
-    }
-
-    public void LaunchBall()
-    {
-        float x = Random.Range(0, 2) == 0 ? -1 : 1;
-        float y = Random.Range(0, 2) == 0 ? -1 : 1;
-        rb.linearVelocity = new Vector3(x, y,0).normalized * speed;
-        isLaunched = true;
-    }
-
-    public void ResetBall()
-    {
-        rb.linearVelocity = Vector3.zero;
-        transform.position = Vector3.zero;
-        isLaunched = false;
     }
 }

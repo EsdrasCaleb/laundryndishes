@@ -1,20 +1,36 @@
 using UnityEngine;
 
+[RequireComponent(typeof(Renderer))]
 public class Brick : MonoBehaviour
 {
-    public int points = 100;
-    private GameManager gameManager;
+    public BrickData brickData;
+    public GameManager gameManager;
 
-    void Start()
+    private Renderer _rederer;
+
+    void Awake()
     {
-        gameManager = FindObjectOfType<GameManager>();
+        _rederer = GetComponent<Renderer>();
+    }
+
+    public void Initiate(BrickData data, GameManager manager)
+    {
+        brickData = data;
+        gameManager = manager;
+
+        if (_rederer == null) _rederer = GetComponent<Renderer>();
+
+        if (brickData != null && _rederer != null)
+        {
+            _rederer.material = brickData.brickMaterial;
+        }
     }
 
     void OnCollisionEnter2D(Collision2D collision)
     {
-        if (collision.gameObject.CompareTag("Ball"))
+        if (collision.gameObject.CompareTag("Ball") && gameManager != null)
         {
-            gameManager.AddScore(points);
+            gameManager.AddScore(brickData.pointsValue);
             gameManager.BrickDestroyed();
             Destroy(gameObject);
         }

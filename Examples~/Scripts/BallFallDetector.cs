@@ -1,17 +1,14 @@
 using UnityEngine;
 
+[RequireComponent(typeof(Collider2D))]
 public class BallFallDetector : MonoBehaviour
 {
+    [SerializeField]
     private GameManager gameManager;
-
-    void Start()
-    {
-        gameManager = FindObjectOfType<GameManager>();
-    }
 
     void OnTriggerEnter2D(Collider2D other)
     {
-        if (other.CompareTag("Ball"))
+        if (other.CompareTag("Ball") && gameManager != null)
         {
             gameManager.LoseLife();
         }
