@@ -9,10 +9,10 @@ using UnityEditor.TestTools.TestRunner.Api;
 namespace LaundryNDishes.UnityCore
 {
     [CreateAssetMenu(fileName = "TestDatabase", menuName = "Laundry & Dishes/Test Database")]
-    public class TestDatabase : ScriptableObject, ICallbacks
+    public class TestDatabase : ScriptableObject
     {
         public List<GeneratedTestData> AllTests = new List<GeneratedTestData>();
-        
+
         [HideInInspector] public string CurrentTargetClassName = "";
         private Action _onTestExecutionFinished;
 
@@ -90,8 +90,71 @@ namespace LaundryNDishes.UnityCore
                         needsSave = true;
                     }
                 }
-            }
 
+                // =================================================================================
+                // ADIÇÃO: ATUALIZAÇÃO DE FORMATOS ANTIGOS E SINCRONIZAÇÃO DE INDIVIDUAL TESTS
+                // =================================================================================
+                if (test.GeneratedTestScript != null)
+                {
+                    System.Type scriptType = test.GeneratedTestScript.GetClass();
+                    Debug.Log("Entrou");
+                    if (scriptType != null)
+                    {
+                        // Garante que a lista não esteja nula caso venha de um estado antigo desserializado
+                        if (test.IndividualTests == null)
+                        {
+                            test.IndividualTests = new List<IndividualTestResult>();
+                        }
+
+                        var currentMethods = scriptType.GetMethods(System.Reflection.BindingFlags.Public |
+                                                                  System.Reflection.BindingFlags.Instance |
+                                                                  System.Reflection.BindingFlags.Static);
+
+                        string className = scriptType.FullName ?? scriptType.Name;
+                        var updatedList = new List<IndividualTestResult>();
+
+                        foreach (var method in currentMethods)
+                        {
+                            // Filtra apenas métodos declarados diretamente na classe de teste (evita heranças)
+                            if (method.DeclaringType != scriptType || method.IsSpecialName) continue;
+
+                            string testName = method.Name;
+                            string fullName = $"{className}.{testName}";
+
+                            // Tenta reaproveitar o teste antigo se ele já existia na lista
+                            var existingTest = test.IndividualTests.Find(it => it.MethodName == testName);
+
+                            if (existingTest != null)
+                            {
+                                existingTest.FullName = fullName; // Atualiza o FullName caso tenha mudado namespace/classe
+                                updatedList.Add(existingTest);
+                            }
+                            else
+                            {
+                                // Detectou um teste novo criado no arquivo ou migração de formato antigo
+                                updatedList.Add(new IndividualTestResult
+                                {
+                                    MethodName = testName,
+                                    FullName = fullName,
+                                    Status = SingleTestStatus.Unknown
+                                });
+                                needsSave = true;
+                            }
+                        }
+
+                        // Se o tamanho diferir, significa que testes antigos foram deletados do arquivo físico
+                        if (test.IndividualTests.Count != updatedList.Count)
+                        {
+                            needsSave = true;
+                        }
+
+                        test.IndividualTests = updatedList;
+                    }
+                }
+                // =================================================================================
+                // FIM DA ADIÇÃO
+                // =================================================================================
+            }
             // Salva o banco de dados apenas se alguma referência nova foi conectada
             if (needsSave)
             {
@@ -108,96 +171,5 @@ namespace LaundryNDishes.UnityCore
             // Verifica se existe algum teste na lista para este script e este método
             return AllTests.Exists(t => t.TargetScript == targetScript && t.SutMethod == method);
         }
-        
-        // =================================================================================
-        // EXECUÇÃO DE TESTES
-        // =================================================================================
-
-        /// <summary>
-        /// Executa um teste específico. Recebe um callback opcional para executar ao terminar.
-        /// </summary>
-        public void RunTest(GeneratedTestData testData, Action onFinishedCallback = null)
-        {
-            // Guarda o callback para ser chamado no RunFinished
-            _onTestExecutionFinished = onFinishedCallback;
-            CurrentTargetClassName = testData.GeneratedTestScript.GetClass()?.FullName ?? testData.GeneratedTestScript.name;
-            TestMode mode = (testData.type.ToString() == "Unitieditor") ? TestMode.EditMode : TestMode.PlayMode;
-
-            Debug.Log($"[TestDatabase] Executando teste: {CurrentTargetClassName} | Mode: {mode}");
-
-            var api = ScriptableObject.CreateInstance<TestRunnerApi>();
-            
-            api.RegisterCallbacks(this); 
-            api.Execute(new ExecutionSettings(new Filter { testNames = new[] { CurrentTargetClassName }, testMode = mode }));
-        }
-
-        public void RunFinished(ITestResultAdaptor result)
-        {
-            Debug.Log($"[TestDatabase] Execution Finished Start");
-            try
-            {
-                var testData = AllTests.Find(t => t.GeneratedTestScript != null && 
-                               (t.GeneratedTestScript.GetClass()?.FullName ?? t.GeneratedTestScript.name) == CurrentTargetClassName);
-
-                if (testData != null)
-                {
-                    testData.IndividualTests.Clear();
-                    ExtractIndividualTests(result, testData);
-                    testData.WasExecuted = true;
-                    
-                    EditorUtility.SetDirty(this);
-                    AssetDatabase.SaveAssets();
-                    Debug.Log($"[TestDatabase] Testes extraídos e salvos com sucesso para: {CurrentTargetClassName}");
-                }
-            }
-            finally
-            {
-                var api = ScriptableObject.CreateInstance<TestRunnerApi>();
-                api.UnregisterCallbacks(this);
-                CurrentTargetClassName = "";
-                Debug.Log($"[TestDatabase] Execution Finished callback: {_onTestExecutionFinished}");
-                // Chama o callback (se ele foi passado na hora do RunTest)
-                _onTestExecutionFinished?.Invoke();
-                
-                // Limpa o callback da memória
-                _onTestExecutionFinished = null;
-            }
-        }
-
-        private void ExtractIndividualTests(ITestResultAdaptor node, GeneratedTestData testData)
-        {
-            if (!node.HasChildren)
-            {
-                testData.IndividualTests.Add(new IndividualTestResult
-                {
-                    MethodName = node.Test.Name,
-                    FullName = node.Test.FullName,
-                    Status = MapStatus(node.TestStatus)
-                });
-            }
-            else
-            {
-                foreach (var child in node.Children)
-                {
-                    ExtractIndividualTests(child, testData);
-                }
-            }
-        }
-
-        private SingleTestStatus MapStatus(TestStatus unityStatus)
-        {
-            switch (unityStatus)
-            {
-                case TestStatus.Passed: return SingleTestStatus.Passed;
-                case TestStatus.Failed: return SingleTestStatus.Failed;
-                case TestStatus.Inconclusive: return SingleTestStatus.Inconclusive;
-                case TestStatus.Skipped: return SingleTestStatus.Skipped;
-                default: return SingleTestStatus.Unknown;
-            }
-        }
-
-        public void RunStarted(ITestAdaptor testsToRun) { }
-        public void TestStarted(ITestAdaptor test) { }
-        public void TestFinished(ITestResultAdaptor result) { }
     }
 }

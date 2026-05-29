@@ -23,7 +23,7 @@ namespace LaundryNDishes.Data
         public MonoScript GeneratedTestScript;
 
         [Tooltip("Test Type.")]
-        public readonly TestType type;
+        public TestType type;
 
         public int numberOfTests => IndividualTests.Count;
         public int passedTestCount => IndividualTests.Count(test => test.Status == SingleTestStatus.Passed);

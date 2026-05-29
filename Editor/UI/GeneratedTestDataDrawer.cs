@@ -2,7 +2,7 @@ using UnityEditor;
 using UnityEngine;
 using System.IO;
 using LaundryNDishes.Data;
-using LaundryNDishes.DomainAdapter; 
+using LaundryNDishes.DomainAdapter;
 
 namespace LaundryNDishes.UI
 {
@@ -38,7 +38,7 @@ namespace LaundryNDishes.UI
                 // --- 1. CAMPOS BÁSICOS ---
                 Rect propRect = new Rect(position.x, yPos, position.width, lineH);
                 EditorGUI.PropertyField(propRect, targetScriptProp); yPos += lineH + 2;
-                
+
                 propRect.y = yPos; EditorGUI.PropertyField(propRect, sutMethodProp); yPos += lineH + 2;
                 propRect.y = yPos; EditorGUI.PropertyField(propRect, generatedTestScriptProp); yPos += lineH + 2;
 
@@ -110,24 +110,40 @@ namespace LaundryNDishes.UI
 
         private void DrawIndividualTestRow(Rect rect, string methodName, string fullName, SingleTestStatus status, SerializedProperty scriptProp, SerializedProperty typeProp, SerializedObject obj)
         {
-            // Status Icon/Color
-            Color oldColor = GUI.color;
-            GUI.color = status switch {
+            // Define o texto exato baseado no status atual do enum
+            string statusText = status switch
+            {
+                SingleTestStatus.Passed => "PASSED",
+                SingleTestStatus.Failed => "FAILED",
+                SingleTestStatus.Inconclusive => "INCONCLUSIVE",
+                SingleTestStatus.Skipped => "SKIPPED",
+                _ => "PENDING" // Se for Unknown ou não tiver sido executado ainda
+            };
+
+            // Largura fixa para o texto do status não embolar com o resto
+            float statusWidth = 80f;
+
+            // 1. Nome do teste (ocupa o começo até esbarrar no status)
+            Rect labelRect = new Rect(rect.x, rect.y, rect.width - statusWidth - BUTTON_WIDTH - 10, rect.height);
+            EditorGUI.LabelField(labelRect, methodName);
+
+            // 2. Texto do Status (Alinhado à direita antes do botão Run)
+            Rect statusRect = new Rect(rect.x + rect.width - BUTTON_WIDTH - statusWidth - 5, rect.y, statusWidth, rect.height);
+
+            // Opcional: Adiciona uma cor suave apenas no texto para bater o olho mais fácil
+            Color oldColor = GUI.contentColor;
+            GUI.contentColor = status switch
+            {
                 SingleTestStatus.Passed => Color.green,
-                SingleTestStatus.Failed => Color.red,
+                SingleTestStatus.Failed => new Color(1f, 0.4f, 0.4f), // Um vermelho mais legível no tema escuro
                 SingleTestStatus.Inconclusive => Color.yellow,
                 _ => Color.gray
             };
 
-            Rect statusRect = new Rect(rect.x, rect.y, 15, rect.height);
-            GUI.Box(statusRect, GUIContent.none); // Um quadradinho colorido
-            GUI.color = oldColor;
+            EditorGUI.LabelField(statusRect, statusText, EditorStyles.miniLabel);
+            GUI.contentColor = oldColor; // Restaura a cor padrão do editor
 
-            // Nome do teste
-            Rect labelRect = new Rect(rect.x + 20, rect.y, rect.width - 20 - BUTTON_WIDTH - 5, rect.height);
-            EditorGUI.LabelField(labelRect, methodName);
-
-            // Botão de rodar só este
+            // 3. Botão de rodar só este teste
             Rect runRect = new Rect(rect.x + rect.width - BUTTON_WIDTH, rect.y, BUTTON_WIDTH, rect.height);
             if (GUI.Button(runRect, "Run"))
             {
@@ -144,9 +160,9 @@ namespace LaundryNDishes.UI
             string assemblyFile = UnityEditor.Compilation.CompilationPipeline.GetAssemblyNameFromScriptPath(path);
             string assemblyName = assemblyFile.Replace(".dll", "");
             string className = script.GetClass()?.FullName ?? script.name;
-            
-            var mode = (typeProp.enumNames[typeProp.enumValueIndex] == "Unitieditor") 
-                        ? UnityEditor.TestTools.TestRunner.Api.TestMode.EditMode 
+
+            var mode = (typeProp.enumNames[typeProp.enumValueIndex] == "Unitieditor")
+                        ? UnityEditor.TestTools.TestRunner.Api.TestMode.EditMode
                         : UnityEditor.TestTools.TestRunner.Api.TestMode.PlayMode;
 
             RunTestFireAndForget(assemblyName, className, mode, specificTests);
@@ -172,11 +188,11 @@ namespace LaundryNDishes.UI
 
             float h = EditorGUIUtility.singleLineHeight; // Foldout
             h += (EditorGUIUtility.singleLineHeight + 2) * 4; // 4 Propriedades básicas
-            
+
             var targetScriptProp = property.FindPropertyRelative("TargetScript");
             var generatedTestScriptProp = property.FindPropertyRelative("GeneratedTestScript");
             if (IsSutNewer(targetScriptProp, generatedTestScriptProp)) h += 40; // HelpBox
-            
+
             h += EditorGUIUtility.singleLineHeight + 5; // Botões principais
 
             var testsListProp = property.FindPropertyRelative("IndividualTests");
