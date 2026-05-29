@@ -1,15 +1,20 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
 using LaundryNDishes.Data;
+using UnityEditor.TestTools.TestRunner.Api;
 
 namespace LaundryNDishes.UnityCore
 {
     [CreateAssetMenu(fileName = "TestDatabase", menuName = "Laundry & Dishes/Test Database")]
-    public class TestDatabase : ScriptableObject
+    public class TestDatabase : ScriptableObject, ICallbacks
     {
         public List<GeneratedTestData> AllTests = new List<GeneratedTestData>();
+        
+        [HideInInspector] public string CurrentTargetClassName = "";
+        private Action _onTestExecutionFinished;
 
         private static TestDatabase _instance;
 
@@ -28,7 +33,7 @@ namespace LaundryNDishes.UnityCore
                 else
                 {
                     _instance = CreateInstance<TestDatabase>();
-                    string path = "Assets/Editor/Data"; 
+                    string path = "Assets/Editor/Data";
                     if (!Directory.Exists(path))
                     {
                         Directory.CreateDirectory(path);
@@ -40,7 +45,7 @@ namespace LaundryNDishes.UnityCore
                 return _instance;
             }
         }
-        
+
         // A Unity chama isso automaticamente SEMPRE que termina de compilar os códigos do projeto.
         [UnityEditor.Callbacks.DidReloadScripts]
         private static void OnScriptsReloaded()
@@ -53,7 +58,7 @@ namespace LaundryNDishes.UnityCore
         }
 
         /// <summary>
-        /// Varre o banco de dados procurando testes que têm o caminho do arquivo, 
+        /// Varre o banco de dados procurando testes que têm o caminho do arquivo,
         /// mas ainda não têm o MonoScript associado (porque acabaram de ser gerados).
         /// </summary>
         public void ResolvePendingScripts()
@@ -78,7 +83,7 @@ namespace LaundryNDishes.UnityCore
 
                     // 2. Agora é 100% seguro tentar carregar o arquivo (ele existe e a Unity já compilou!)
                     var scriptAsset = AssetDatabase.LoadAssetAtPath<MonoScript>(test.GeneratedTestFilePath);
-                    
+
                     if (scriptAsset != null)
                     {
                         test.GeneratedTestScript = scriptAsset;
@@ -99,9 +104,100 @@ namespace LaundryNDishes.UnityCore
         public bool HasTestForMethod(MonoScript targetScript, string method)
         {
             if (targetScript == null || string.IsNullOrEmpty(method)) return false;
-            
+
             // Verifica se existe algum teste na lista para este script e este método
             return AllTests.Exists(t => t.TargetScript == targetScript && t.SutMethod == method);
         }
+        
+        // =================================================================================
+        // EXECUÇÃO DE TESTES
+        // =================================================================================
+
+        /// <summary>
+        /// Executa um teste específico. Recebe um callback opcional para executar ao terminar.
+        /// </summary>
+        public void RunTest(GeneratedTestData testData, Action onFinishedCallback = null)
+        {
+            // Guarda o callback para ser chamado no RunFinished
+            _onTestExecutionFinished = onFinishedCallback;
+            CurrentTargetClassName = testData.GeneratedTestScript.GetClass()?.FullName ?? testData.GeneratedTestScript.name;
+            TestMode mode = (testData.type.ToString() == "Unitieditor") ? TestMode.EditMode : TestMode.PlayMode;
+
+            Debug.Log($"[TestDatabase] Executando teste: {CurrentTargetClassName} | Mode: {mode}");
+
+            var api = ScriptableObject.CreateInstance<TestRunnerApi>();
+            
+            api.RegisterCallbacks(this); 
+            api.Execute(new ExecutionSettings(new Filter { testNames = new[] { CurrentTargetClassName }, testMode = mode }));
+        }
+
+        public void RunFinished(ITestResultAdaptor result)
+        {
+            Debug.Log($"[TestDatabase] Execution Finished Start");
+            try
+            {
+                var testData = AllTests.Find(t => t.GeneratedTestScript != null && 
+                               (t.GeneratedTestScript.GetClass()?.FullName ?? t.GeneratedTestScript.name) == CurrentTargetClassName);
+
+                if (testData != null)
+                {
+                    testData.IndividualTests.Clear();
+                    ExtractIndividualTests(result, testData);
+                    testData.WasExecuted = true;
+                    
+                    EditorUtility.SetDirty(this);
+                    AssetDatabase.SaveAssets();
+                    Debug.Log($"[TestDatabase] Testes extraídos e salvos com sucesso para: {CurrentTargetClassName}");
+                }
+            }
+            finally
+            {
+                var api = ScriptableObject.CreateInstance<TestRunnerApi>();
+                api.UnregisterCallbacks(this);
+                CurrentTargetClassName = "";
+                Debug.Log($"[TestDatabase] Execution Finished callback: {_onTestExecutionFinished}");
+                // Chama o callback (se ele foi passado na hora do RunTest)
+                _onTestExecutionFinished?.Invoke();
+                
+                // Limpa o callback da memória
+                _onTestExecutionFinished = null;
+            }
+        }
+
+        private void ExtractIndividualTests(ITestResultAdaptor node, GeneratedTestData testData)
+        {
+            if (!node.HasChildren)
+            {
+                testData.IndividualTests.Add(new IndividualTestResult
+                {
+                    MethodName = node.Test.Name,
+                    FullName = node.Test.FullName,
+                    Status = MapStatus(node.TestStatus)
+                });
+            }
+            else
+            {
+                foreach (var child in node.Children)
+                {
+                    ExtractIndividualTests(child, testData);
+                }
+            }
+        }
+
+        private SingleTestStatus MapStatus(TestStatus unityStatus)
+        {
+            switch (unityStatus)
+            {
+                case TestStatus.Passed: return SingleTestStatus.Passed;
+                case TestStatus.Failed: return SingleTestStatus.Failed;
+                case TestStatus.Inconclusive: return SingleTestStatus.Inconclusive;
+                case TestStatus.Skipped: return SingleTestStatus.Skipped;
+                default: return SingleTestStatus.Unknown;
+            }
+        }
+
+        public void RunStarted(ITestAdaptor testsToRun) { }
+        public void TestStarted(ITestAdaptor test) { }
+        public void TestFinished(ITestResultAdaptor result) { }
     }
 }

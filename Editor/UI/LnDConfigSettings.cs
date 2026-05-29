@@ -26,6 +26,43 @@ namespace LaundryNDishes.UI
         {
             // Pega a instância única da configuração. A mágica do singleton acontece aqui.
             var config = LnDConfig.Instance;
+            // --- INSERÇÃO DA TELEMETRIA ANÔNIMA (HASH INTEGRADO COM UNITY ID / ORG) ---
+            EditorGUILayout.LabelField("Telemetry & System Info", EditorStyles.boldLabel);
+            
+            // 1. Captura identificadores nativos da conta Unity (Persistem entre múltiplos projetos)
+            string unityId = CloudProjectSettings.userId;
+            string orgId = CloudProjectSettings.organizationId;
+            string devId = SystemInfo.deviceUniqueIdentifier;
+
+            // 2. Monta uma semente combinando o que estiver disponível para blindar contra 'root' ou IDs genéricos
+            var seedBuilder = new System.Text.StringBuilder();
+            
+            if (!string.IsNullOrEmpty(unityId)) seedBuilder.Append(unityId);
+            if (!string.IsNullOrEmpty(orgId)) seedBuilder.Append(orgId);
+            
+            // Adiciona o hardware se ele for válido e não for uma string genérica de ambiente virtualizado
+            if (!string.IsNullOrEmpty(devId) && devId != "n/a" && !devId.Contains("00000000"))
+            {
+                seedBuilder.Append(devId);
+            }
+            else if (seedBuilder.Length == 0) 
+            {
+                // Fallback extremo (caso esteja em Docker totalmente offline e sem login na Unity)
+                seedBuilder.Append(System.Environment.MachineName).Append(System.Environment.UserName);
+            }
+
+            string shortHash;
+            using (var sha256 = System.Security.Cryptography.SHA256.Create())
+            {
+                byte[] hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(seedBuilder.ToString()));
+                shortHash = System.BitConverter.ToString(hashBytes).Replace("-", "").Substring(0, 8).ToUpper();
+            }
+
+            GUI.enabled = false; // Apenas leitura, mas permite cópia por parte do usuário
+            EditorGUILayout.TextField("Anonymized Developer ID", shortHash);
+            GUI.enabled = true;  // Restaura o fluxo normal da UI
+            EditorGUILayout.Space(10);
+            // --------------------------------------------------------------------------
 
             EditorGUI.BeginChangeCheck(); // Inicia a detecção de mudanças na UI.
 

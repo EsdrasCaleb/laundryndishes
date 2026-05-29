@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using LaundryNDishes.Core;
 using LaundryNDishes.UnityCore;
 using System.IO;
+using System.Text;
 using LaundryNDishes.Data;
 using UnityEditor.Compilation;
 using UnityEditor.TestTools.TestRunner.Api;
@@ -14,7 +15,7 @@ namespace LaundryNDishes.CLI
 {
     public static class LndCommandLineInterface
     {
-        
+
         public static void GenerateTest()
         {
             try
@@ -87,7 +88,7 @@ namespace LaundryNDishes.CLI
                 EditorApplication.Exit(1);
             }
         }
-        
+
         /// <summary>
         /// Entry point da CLI para gerar testes para uma pasta inteira.
         /// Comando: -executeMethod LaundryNDishes.CLI.LndCommandLineInterface.GenerateTestsFolder -folder "Assets/Scripts/MinhaPasta"
@@ -97,7 +98,7 @@ namespace LaundryNDishes.CLI
             try
             {
                 Debug.Log("[LnD CLI] Iniciando geração em lote por pasta...");
-                
+
                 string folderPath = GetArgValue("-folder");
                 string csvPath = GetArgValue("-csv");
 
@@ -145,14 +146,14 @@ namespace LaundryNDishes.CLI
             var config = LnDConfig.Instance;
             var llmService = config.GetCurrentService();
             var generator = new UnitTestGenerator(llmService, config);
-            
+
             if (!string.IsNullOrEmpty(csvPath) && !File.Exists(csvPath))
             {
                 File.WriteAllText(csvPath, "SUTClass,SUTMethod,TestType,TestFile,NumberOfCorrections,Attempts,TimeToGenerate(ms),Status\n");
             }
             // BLOQUEIA A RECOMPILAÇÃO: Impede a Unity de travar durante o loop ao criar novos arquivos
             EditorApplication.LockReloadAssemblies();
-            
+
             try
             {
                 // Busca todos os scripts dentro da pasta informada
@@ -160,11 +161,11 @@ namespace LaundryNDishes.CLI
 
                 int totalScripts = guids.Length;
                 int currentScriptIndex = 0;
-                
+
                 foreach (string guid in guids)
                 {
                     currentScriptIndex++;
-                    
+
                     string assetPath = AssetDatabase.GUIDToAssetPath(guid);
                     MonoScript script = AssetDatabase.LoadAssetAtPath<MonoScript>(assetPath);
                     if (script == null) continue;
@@ -181,7 +182,7 @@ namespace LaundryNDishes.CLI
                         Debug.Log($"[LnD CLI] Pulando {script.name} - É um script de teste (Verificação por Assembly).");
                         continue;
                     }
-    
+
                     // 2. Filtro Bônus de Segurança (Pelo caminho físico das pastas de teste do Config)
                     bool isInTestFolder = false;
 
@@ -210,16 +211,16 @@ namespace LaundryNDishes.CLI
                         Debug.Log($"[LnD CLI] Pulando {script.name} - Script está dentro do diretório de testes configurado.");
                         continue;
                     }
-                    
+
                     bool isMonoBehaviour = typeof(MonoBehaviour).IsAssignableFrom(scriptType);
 
                     // Usa a classe utilitária que criamos antes para extrair os métodos!
                     var (unitMethods, behaviorMethods) = ScriptMethodAnalyzer.CategorizeMethods(scriptType);
-                    
+
                     float progressPercentage = ((float)currentScriptIndex / totalScripts) * 100f;
                     int filledBars = (int)(progressPercentage / 5f); // 20 barrinhas no total (100 / 5)
                     string progressBar = new string('#', filledBars).PadRight(20, '-');
-            
+
                     Debug.Log($"\n[LnD CLI] PROGRESSO: [{progressBar}] {progressPercentage:F1}% ({currentScriptIndex}/{totalScripts})");
                     Debug.Log($"[LnD CLI] Analisando Script: {script.name} | É MonoBehaviour? {isMonoBehaviour}");
 
@@ -229,8 +230,8 @@ namespace LaundryNDishes.CLI
                         foreach (var method in behaviorMethods)
                         {
                             Debug.Log($"   -> [Behavior] Gerando teste para: {method}");
-                            await generator.Generate(script, method, TestType.Behavior, csvPath);                        
-                       }
+                            await generator.Generate(script, method, TestType.Behavior, csvPath);
+                        }
 
                         // 2. Gera os testes de lógica pura do MonoBehaviour (Uniti)
                         foreach (var method in unitMethods)
@@ -272,117 +273,76 @@ namespace LaundryNDishes.CLI
             }
             return null;
         }
-        
-        /// <summary>
-        /// Comando da CLI: -executeMethod LaundryNDishes.CLI.LndCommandLineInterface.ExportTestReport -csv "Caminho/relatorio.csv"
-        /// </summary>
+
         public static void ExportTestReport()
         {
             try
             {
-                Debug.Log("[LnD CLI] Iniciando execução de testes para o relatório...");
                 string csvPath = GetArgValue("-csv");
-
                 if (string.IsNullOrEmpty(csvPath))
                 {
-                    Debug.LogError("[LnD CLI] ERRO: Caminho do CSV não fornecido. Use o argumento -csv <caminho_do_arquivo>");
+                    Debug.LogError("[LnD CLI] ERRO: Caminho do CSV não fornecido.");
                     EditorApplication.Exit(1);
                     return;
                 }
 
-                var reportTask = RunAllTestsAndGenerateReportAsync(csvPath);
+                var db = TestDatabase.Instance;
+                
 
-                EditorApplication.update += () =>
+                var sb = new StringBuilder();
+                // Cabeçalho exatamente como você pediu
+                sb.AppendLine("File,Path,Type,ClassName,TestName");
+
+                foreach (var t in db.AllTests)
                 {
-                    if (reportTask.IsCompleted)
+                    if (t.GeneratedTestScript == null) continue;
+
+                    string fileName = t.GeneratedTestScript.name;
+                    string assetPath = AssetDatabase.GetAssetPath(t.GeneratedTestScript);
+                    string testType = t.type.ToString();
+                    
+                    Type scriptType = t.GeneratedTestScript.GetClass();
+                    if (scriptType == null) continue;
+
+                    string className = scriptType.FullName ?? scriptType.Name;
+
+                    // Usa reflexão para capturar os métodos públicos declarados na classe de teste
+                    var methods = scriptType.GetMethods(System.Reflection.BindingFlags.Public | 
+                                                        System.Reflection.BindingFlags.Instance | 
+                                                        System.Reflection.BindingFlags.Static);
+
+                    foreach (var method in methods)
                     {
-                        if (reportTask.IsFaulted)
-                        {
-                            Debug.LogError($"[LnD CLI] ERRO FATAL AO GERAR RELATÓRIO: {reportTask.Exception?.GetBaseException().Message}");
-                            EditorApplication.Exit(1);
-                        }
-                        else
-                        {
-                            Debug.Log("[LnD CLI] Relatório finalizado e salvo com sucesso!");
-                            EditorApplication.Exit(0);
-                        }
+                        // Garante que estamos pegando apenas métodos da própria classe (ignora heranças do Object do C#)
+                        if (method.DeclaringType != scriptType) continue;
+                        if (method.IsSpecialName) continue; // Ignora propriedades/construtores se houver
+
+                        string testName = method.Name;
+                        sb.AppendLine($"{fileName},{assetPath},{testType},{className},{testName}");
                     }
-                };
+                }
+
+                // Garante a criação do diretório caso não exista e sobrescreve o CSV anterior
+                string directory = Path.GetDirectoryName(csvPath);
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                File.WriteAllText(csvPath, sb.ToString(), Encoding.UTF8);
+                Debug.Log($"[LnD CLI] Manifesto de testes gerado com sucesso em: {csvPath}");
+                
+                // Encerra a Unity com sucesso para o seu script de terminal assumir o controle
+                EditorApplication.Exit(0);
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[LnD CLI] ERRO FATAL: {ex.Message}");
+                Debug.LogError($"[LnD CLI] ERRO FATAL AO GERAR MANIFESTO: {ex.Message}");
                 EditorApplication.Exit(1);
             }
         }
 
-        private static async Task RunAllTestsAndGenerateReportAsync(string csvPath)
-        {
-            var db = TestDatabase.Instance;
-            if (db == null || db.AllTests.Count == 0)
-            {
-                Debug.LogWarning("[LnD CLI] O banco de dados de testes está vazio.");
-                System.IO.File.WriteAllText(csvPath, "File,Path,Type,PassedCount,FailedCount,Status\n");
-                return;
-            }
+        
 
-            var sb = new System.Text.StringBuilder();
-            // Cabeçalho do CSV
-            sb.AppendLine("File,Path,Type,PassedCount,FailedCount,Status");
-
-            bool dbNeedsSave = false;
-
-            for (int i = 0; i < db.AllTests.Count; i++)
-            {
-                var testData = db.AllTests[i];
-
-                if (testData.GeneratedTestScript == null) continue;
-
-                // 1. Extrai os caminhos e dados da Unity
-                string assetPath = AssetDatabase.GetAssetPath(testData.GeneratedTestScript);
-                string assemblyFile = CompilationPipeline.GetAssemblyNameFromScriptPath(assetPath);
-                
-                // O TestRunnerApi requer o nome do Assembly SEM a extensão ".dll"
-                string assemblyName = assemblyFile.Replace(".dll", "");
-                
-                // O nome da classe com o namespace para que o TestRunner a encontre com precisão
-                string className = testData.GeneratedTestScript.GetClass()?.FullName ?? testData.GeneratedTestScript.name;
-
-                // 2. Define se roda no EditMode ou PlayMode baseado na enum que você guardou
-                // (Se a sua enum se chamar diferente, ajuste aqui. Assumi "Unitieditor" como EditMode)
-                TestMode mode = (testData.type.ToString() == "Unitieditor") ? TestMode.EditMode : TestMode.PlayMode;
-
-                Debug.Log($"[LnD CLI] ({i + 1}/{db.AllTests.Count}) Rodando {className} [{mode}]...");
-
-                // 3. Executa
-                var executor = new LaundryNDishes.DomainAdapter.TestExecutor();
-                await executor.Run(assemblyName, className, mode);
-
-                // 4. Salva o resultado no banco e no CSV
-                if (executor.TestResult.HasValue)
-                {
-                    var (passed, passCount, failCount) = executor.TestResult.Value;
-                    
-                    dbNeedsSave = true;
-
-                    string status = passed ? "PASSED" : "FAILED";
-                    sb.AppendLine($"{testData.GeneratedTestScript.name},{assetPath},{testData.type},{passCount},{failCount},{status}");
-                }
-                else
-                {
-                    sb.AppendLine($"{testData.GeneratedTestScript.name},{assetPath},{testData.type},0,0,ERROR");
-                }
-            }
-
-            // Salva as alterações feitas na flag 'passedInLastExecution' do banco
-            if (dbNeedsSave)
-            {
-                EditorUtility.SetDirty(db);
-                AssetDatabase.SaveAssets();
-            }
-
-            System.IO.File.WriteAllText(csvPath, sb.ToString());
-            Debug.Log($"[LnD CLI] Relatório CSV salvo fisicamente em: {csvPath}");
-        }
     }
 }

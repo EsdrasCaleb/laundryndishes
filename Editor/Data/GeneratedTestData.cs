@@ -18,20 +18,23 @@ namespace LaundryNDishes.Data
 
         [HideInInspector]
         public string GeneratedTestFilePath;
-        
+
         [Tooltip("O arquivo de script de teste que foi gerado. A referência não quebra se o arquivo for renomeado.")]
         public MonoScript GeneratedTestScript;
 
-        public TestType type;
-        
-        public int numberOfTests=>IndividualTests.Count;
-        public int passedTestCount=>IndividualTests.Count(test => test.Status == SingleTestStatus.Passed);
+        [Tooltip("Test Type.")]
+        public readonly TestType type;
 
-        
+        public int numberOfTests => IndividualTests.Count;
+        public int passedTestCount => IndividualTests.Count(test => test.Status == SingleTestStatus.Passed);
+
+        [Tooltip("Indica se este teste já foi executado na rodada atual.")]
+        public bool WasExecuted;
+
         public List<IndividualTestResult> IndividualTests = new List<IndividualTestResult>();
-        
+
         public GeneratedTestData(MonoScript script, string sutMethod, TestType type)
-            : this(script, sutMethod,type, null, false)
+            : this(script, sutMethod, type, null, false)
         {
         }
 
