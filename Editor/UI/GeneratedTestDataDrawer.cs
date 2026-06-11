@@ -43,6 +43,23 @@ namespace LaundryNDishes.UI
                 propRect.y = yPos; EditorGUI.PropertyField(propRect, generatedTestScriptProp); yPos += lineH + 2;
 
                 EditorGUI.BeginDisabledGroup(true);
+                propRect.y = yPos;
+
+                // Pega o nome string original do enum (ex: "Unitieditor")
+                string rawEnumName = typeProp.enumNames[typeProp.enumValueIndex];
+
+                // Traduz para um formato esteticamente agradável para a UI
+                string prettyTypeName = rawEnumName switch
+                {
+                    "Uniti" => "Unitary (PlayMode)",
+                    "Unitieditor" => "Unitary (EditMode)",
+                    "Behavior" => "Unitary In LifeCicle (PlayMode)",
+                    "Integration" => "Integration (PlayMode)",
+                    "Scriptable" => "Unitary In Scriptable (PlayMode)",
+                    "Prefab" => "Unitary In Prefab (PlayMode)",
+                    "Scene" => "Unitary In Scene (PlayMode)",
+                    _ => rawEnumName // Fallback caso apareça outro tipo
+                };
                 propRect.y = yPos; EditorGUI.PropertyField(propRect, typeProp); yPos += lineH + 2;
                 EditorGUI.EndDisabledGroup();
 
@@ -95,14 +112,8 @@ namespace LaundryNDishes.UI
         {
             float halfWidth = rect.width / 2f;
             Rect btn1 = new Rect(rect.x, rect.y, halfWidth - 2, rect.height);
-            Rect btn2 = new Rect(rect.x + halfWidth + 2, rect.y, halfWidth - 2, rect.height);
 
-            if (GUI.Button(btn1, "Update Type"))
-            {
-                // Lógica de update type (mesma que você já tinha)
-            }
-
-            if (GUI.Button(btn2, "Run All in Class"))
+            if (GUI.Button(btn1, "Run All in Class"))
             {
                 RunTest(testScriptProp, typeProp, obj, null); // null executa a classe toda
             }

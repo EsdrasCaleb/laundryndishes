@@ -273,74 +273,106 @@ namespace LaundryNDishes.CLI
             }
             return null;
         }
-
-        public static void ExportTestReport()
+//Call to get generated Test List
+public static void ExportTestReport()
+{
+    try
+    {
+        string csvPath = GetArgValue("-csv");
+        if (string.IsNullOrEmpty(csvPath))
         {
-            try
+            Debug.LogError("[LnD CLI] ERRO: Caminho do CSV não fornecido.");
+            EditorApplication.Exit(1);
+            return;
+        }
+
+        var db = TestDatabase.Instance;
+        
+        var sb = new StringBuilder();
+        
+        // MODIFICAÇÃO: Adicionada a coluna "Status" no cabeçalho do CSV
+        sb.AppendLine("File,Path,Type,ClassName,TestName,Status");
+
+        foreach (var t in db.AllTests)
+        {
+            if (t.GeneratedTestScript == null) continue;
+
+            string fileName = t.GeneratedTestScript.name;
+            string assetPath = AssetDatabase.GetAssetPath(t.GeneratedTestScript);
+            
+            // MODIFICAÇÃO: Deixa o nome do tipo legível igual ao Drawer
+            string testType = t.type.ToString() switch {
+                "Uniti" => "Unitary (PlayMode)",
+                "Unitieditor" => "Unitary (EditMode)",
+                "Behavior" => "Unitary In LifeCicle (PlayMode)",
+                "Integration" => "Integration (PlayMode)",
+                "Scriptable" => "Unitary In Scriptable (PlayMode)",
+                "Prefab" => "Unitary In Prefab (PlayMode)",
+                "Scene" => "Unitary In Scene (PlayMode)",
+                _ => t.type.ToString()
+            };
+            
+            Type scriptType = t.GeneratedTestScript.GetClass();
+            if (scriptType == null) continue;
+
+            string className = scriptType.FullName ?? scriptType.Name;
+
+            var methods = scriptType.GetMethods(System.Reflection.BindingFlags.Public | 
+                                                System.Reflection.BindingFlags.Instance | 
+                                                System.Reflection.BindingFlags.Static);
+
+            foreach (var method in methods)
             {
-                string csvPath = GetArgValue("-csv");
-                if (string.IsNullOrEmpty(csvPath))
+                if (method.DeclaringType != scriptType) continue;
+                if (method.IsSpecialName) continue; 
+
+                // MODIFICAÇÃO: Filtra para exportar APENAS métodos que são testes reais
+                bool isTest = System.Attribute.IsDefined(method, typeof(NUnit.Framework.TestAttribute)) || 
+                              System.Attribute.IsDefined(method, typeof(UnityEngine.TestTools.UnityTestAttribute));
+                if (!isTest) continue;
+
+                string testName = method.Name;
+
+                // =================================================================================
+                // ADIÇÃO: BUSCA E MAPEA O STATUS DO TESTE INDIVIDUAL
+                // =================================================================================
+                var existingTest = t.IndividualTests.Find(it => it.MethodName == testName);
+                string statusText = "PENDING"; // Fallback se o teste nunca foi executado
+
+                if (existingTest != null)
                 {
-                    Debug.LogError("[LnD CLI] ERRO: Caminho do CSV não fornecido.");
-                    EditorApplication.Exit(1);
-                    return;
+                    statusText = existingTest.Status switch {
+                        SingleTestStatus.Passed => "PASSED",
+                        SingleTestStatus.Failed => "FAILED",
+                        SingleTestStatus.Inconclusive => "INCONCLUSIVE",
+                        SingleTestStatus.Skipped => "SKIPPED",
+                        _ => "PENDING"
+                    };
                 }
+                // =================================================================================
 
-                var db = TestDatabase.Instance;
-                
-
-                var sb = new StringBuilder();
-                // Cabeçalho exatamente como você pediu
-                sb.AppendLine("File,Path,Type,ClassName,TestName");
-
-                foreach (var t in db.AllTests)
-                {
-                    if (t.GeneratedTestScript == null) continue;
-
-                    string fileName = t.GeneratedTestScript.name;
-                    string assetPath = AssetDatabase.GetAssetPath(t.GeneratedTestScript);
-                    string testType = t.type.ToString();
-                    
-                    Type scriptType = t.GeneratedTestScript.GetClass();
-                    if (scriptType == null) continue;
-
-                    string className = scriptType.FullName ?? scriptType.Name;
-
-                    // Usa reflexão para capturar os métodos públicos declarados na classe de teste
-                    var methods = scriptType.GetMethods(System.Reflection.BindingFlags.Public | 
-                                                        System.Reflection.BindingFlags.Instance | 
-                                                        System.Reflection.BindingFlags.Static);
-
-                    foreach (var method in methods)
-                    {
-                        // Garante que estamos pegando apenas métodos da própria classe (ignora heranças do Object do C#)
-                        if (method.DeclaringType != scriptType) continue;
-                        if (method.IsSpecialName) continue; // Ignora propriedades/construtores se houver
-
-                        string testName = method.Name;
-                        sb.AppendLine($"{fileName},{assetPath},{testType},{className},{testName}");
-                    }
-                }
-
-                // Garante a criação do diretório caso não exista e sobrescreve o CSV anterior
-                string directory = Path.GetDirectoryName(csvPath);
-                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                File.WriteAllText(csvPath, sb.ToString(), Encoding.UTF8);
-                Debug.Log($"[LnD CLI] Manifesto de testes gerado com sucesso em: {csvPath}");
-                
-                // Encerra a Unity com sucesso para o seu script de terminal assumir o controle
-                EditorApplication.Exit(0);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[LnD CLI] ERRO FATAL AO GERAR MANIFESTO: {ex.Message}");
-                EditorApplication.Exit(1);
+                // MODIFICAÇÃO: Inclui o statusText no final da linha do CSV
+                sb.AppendLine($"{fileName},{assetPath},{testType},{className},{testName},{statusText}");
             }
         }
+
+        string directory = Path.GetDirectoryName(csvPath);
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(csvPath, sb.ToString(), Encoding.UTF8);
+        Debug.Log($"[LnD CLI] Manifesto de testes com telemetria de Status gerado em: {csvPath}");
+        
+        EditorApplication.Exit(0);
+    }
+    catch (Exception ex)
+    {
+        Debug.LogError($"[LnD CLI] ERRO FATAL AO GERAR MANIFESTO: {ex.Message}");
+        EditorApplication.Exit(1);
+    }
+}
 
         
 

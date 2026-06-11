@@ -97,7 +97,6 @@ namespace LaundryNDishes.UnityCore
                 if (test.GeneratedTestScript != null)
                 {
                     System.Type scriptType = test.GeneratedTestScript.GetClass();
-                    Debug.Log("Entrou");
                     if (scriptType != null)
                     {
                         // Garante que a lista não esteja nula caso venha de um estado antigo desserializado
@@ -115,6 +114,10 @@ namespace LaundryNDishes.UnityCore
 
                         foreach (var method in currentMethods)
                         {
+                            bool isTest = System.Attribute.IsDefined(method, typeof(NUnit.Framework.TestAttribute)) || 
+                                          System.Attribute.IsDefined(method, typeof(UnityEngine.TestTools.UnityTestAttribute));
+    
+                            if (!isTest) continue;
                             // Filtra apenas métodos declarados diretamente na classe de teste (evita heranças)
                             if (method.DeclaringType != scriptType || method.IsSpecialName) continue;
 

@@ -128,6 +128,7 @@ namespace LaundryNDishes.UI
             config.MaxAttempts = EditorGUILayout.IntField("Max Attempts (Per Test)", config.MaxAttempts);
             config.MaxCorrections = EditorGUILayout.IntField("Max Corrections (Per Attempt)", config.MaxCorrections);
             config.ShowAllLLmComm = EditorGUILayout.Toggle("Show LLM Communications", config.ShowAllLLmComm);
+            config.ShowAllLLmComm = EditorGUILayout.Toggle("Force Default TearDown", config.DefaultTearDown);
             
             
             EditorGUILayout.Space(20);

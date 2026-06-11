@@ -72,6 +72,7 @@ namespace LaundryNDishes.UnityCore
         public int MaxCorrections { get; set; }
         public int MaxAttempts { get; set; }
         public bool ShowAllLLmComm { get; set; }
+        public bool DefaultTearDown { get; set; }
 
         // --- Chaves de Persistência ---
 
@@ -103,6 +104,7 @@ namespace LaundryNDishes.UnityCore
             MaxCorrections = EditorPrefs.GetInt(KeyPrefix + "MaxCorrections", 5);
             MaxAttempts = EditorPrefs.GetInt(KeyPrefix + "MaxAttempts", 5);
             ShowAllLLmComm = EditorPrefs.GetBool(KeyPrefix + "ShowAllLLmComm", true);
+            DefaultTearDown = EditorPrefs.GetBool(KeyPrefix + "DefaultTearDown", true);
             string dbPath = EditorPrefs.GetString(ActiveDatabasePathKey, string.Empty);
             if (!string.IsNullOrEmpty(dbPath))
             {
@@ -132,6 +134,8 @@ namespace LaundryNDishes.UnityCore
             EditorPrefs.SetInt(KeyPrefix + "MaxCorrections", MaxCorrections);
             EditorPrefs.SetInt(KeyPrefix + "MaxAttempts", MaxAttempts);
             EditorPrefs.SetBool(KeyPrefix + "ShowAllLLmComm", ShowAllLLmComm);
+            EditorPrefs.SetBool(KeyPrefix + "DefaultTearDown", DefaultTearDown);
+            
 
             string path = (ActiveDatabase != null) ? AssetDatabase.GetAssetPath(ActiveDatabase) : string.Empty;
             EditorPrefs.SetString(ActiveDatabasePathKey, path);

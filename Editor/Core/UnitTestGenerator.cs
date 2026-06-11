@@ -95,7 +95,7 @@ namespace LaundryNDishes.Core
                     // ETAPA 3: Salvar o arquivo final. (Ele renomeia a classe para bater com o nome do arquivo).
                     CurrentStep = GeneratingStep.SavingFile;
                     string finalPath = SaveFinalTestFile(rawCompiledCode, targetScript, extra, folder,
-                        out string finalCode);
+                        out string finalCode, testType);
                     GeneratedTestCode = finalCode;
 
                     // ETAPA 4: Atualiza Banco de Dados (Passamos 'true' pois o arquivo compilou e salvou).
@@ -156,7 +156,7 @@ namespace LaundryNDishes.Core
 
                 // ETAPA 3: Salvar o arquivo final e importar para a Unity reconhecer a nova classe.
                 CurrentStep = GeneratingStep.SavingFile;
-                string finalPath = SaveFinalTestFile(rawCompiledCode, targetScript, extra, folder, out string finalCode);
+                string finalPath = SaveFinalTestFile(rawCompiledCode, targetScript, extra, folder, out string finalCode, testType);
                 GeneratedTestCode = finalCode;
                 
                 // Força a compilação do projeto para que o TestRunner enxergue a nova classe salva.
@@ -467,10 +467,10 @@ namespace LaundryNDishes.Core
         }
 
         /// <summary>
-        /// Salva o arquivo no destino final e garante que o nome da classe seja igual ao nome do arquivo.
-        /// Retorna o caminho final e o código atualizado via parâmetro 'out'.
+        /// Salva o arquivo no destino final isolando-o em um namespace único e injetando um TearDown automatizado.
         /// </summary>
-        private string SaveFinalTestFile(string rawCode, MonoScript targetScript, string extra, string destinationFolder, out string updatedCode)
+        private string SaveFinalTestFile(string rawCode, MonoScript targetScript, string extra, 
+            string destinationFolder, out string updatedCode,TestType type)
         {
             if (string.IsNullOrEmpty(destinationFolder))
                 throw new Exception("ERRO: A pasta de destino não foi configurada nos Project Settings!");
@@ -482,42 +482,82 @@ namespace LaundryNDishes.Core
                 sanitizedExtra = sanitizedExtra.Replace(c, '_');
             }
 
-            // 2. Cria o nome base desejado
+            // 2. Cria o nome base desejado para o arquivo e namespace
             string baseFileName = $"{targetScript.name}_{sanitizedExtra}_Test";
             string desiredPath = Path.Combine(destinationFolder, $"{baseFileName}.cs").Replace("\\", "/");
 
-            // 3. Usa a Unity para gerar um caminho único (ex: Adiciona " 1" se já existir)
+            // 3. Usa a Unity para gerar um caminho único de arquivo (evita sobrescrever)
             string uniquePath = AssetDatabase.GenerateUniqueAssetPath(desiredPath);
-            
-            // Extrai apenas o nome do arquivo resultante, sem extensão e sem caminhos, 
-            // ex: "Player_Jump_Test 1"
             string finalClassNameWithSpaces = Path.GetFileNameWithoutExtension(uniquePath);
-            
-            // Nomes de classe em C# não podem ter espaços. O Unity coloca um espaço quando gera unique.
             string finalValidClassName = finalClassNameWithSpaces.Replace(" ", ""); 
 
-            // Como tiramos o espaço do nome da classe, precisamos garantir que o nome do arquivo acompanhe
-            // para não quebrar a regra da Unity.
             uniquePath = Path.Combine(destinationFolder, $"{finalValidClassName}.cs").Replace("\\", "/");
 
-            // 4. Substitui o nome da classe no código original gerado pela IA pelo nome final que decidimos
-            string originalClassName = CodeParser.ExtractClassName(rawCode);
-            if (!string.IsNullOrEmpty(originalClassName) && originalClassName != finalValidClassName)
+            // =================================================================================
+            // ADIÇÃO: ISOLAMENTO POR NAMESPACE E INJEÇÃO DE TEARDOWN AUTOMÁTICO
+            // =================================================================================
+            
+            // 4. Envolve todo o código gerado no namespace único para evitar qualquer colisão de nome de classe
+            string isolatedCode = $"namespace LnDTests.{finalValidClassName}\n{{\n{rawCode}\n}}";
+
+            // 5. Injeta o TearDown de segurança dentro da classe de teste gerada pela IA
+            if (type != TestType.Unitieditor&&LnDConfig.Instance.DefaultTearDown)
             {
-                // Substituição segura usando Regex para pegar a declaração da classe
-                string pattern = $@"\bclass\s+{originalClassName}\b";
-                updatedCode = Regex.Replace(rawCode, pattern, $"class {finalValidClassName}");
-                Log($"Nome da classe atualizado internamente de '{originalClassName}' para '{finalValidClassName}'");
+                isolatedCode = $"using UnityEngine.SceneManagement;\nusing System.Collections;\nusing UnityEngine.TestTools;\n\nnamespace LnDTests.{finalValidClassName}\n{{\n{rawCode}\n}}";
+                // Encontra a declaração da classe (independente do nome que a IA escolheu)
+                Match classMatch = Regex.Match(isolatedCode, @"\bclass\s+\w+");
+                if (classMatch.Success)
+                {
+                
+                    // Localiza a primeira abertura de chaves '{' após o nome da classe para injetar o método no topo
+                    int openBraceIndex = isolatedCode.IndexOf('{', classMatch.Index);
+                    if (openBraceIndex != -1)
+                    {
+                        string automatedTearDown = @"
+    [UnitySetUp]
+    public IEnumerator LnDDefaultReloadScene()
+    {
+        var scene = SceneManager.GetActiveScene();
+
+        yield return SceneManager.LoadSceneAsync(
+            scene.name,
+            LoadSceneMode.Single
+        );
+    }
+
+    [UnityTearDown]
+    public IEnumerator LnDDefaultClearScene()
+    {
+        var roots = SceneManager.GetActiveScene().GetRootGameObjects();
+
+        foreach (var go in roots)
+        {
+            if (go != null)
+            {
+                // DestroyImmediate força a remoção instantânea da memória
+                Object.DestroyImmediate(go);
             }
-            else
-            {
-                updatedCode = rawCode;
+        }
+
+        yield return null; 
+    }
+";
+                        // Injeta o método logo após a abertura da classe
+                        isolatedCode = isolatedCode.Insert(openBraceIndex + 1, automatedTearDown);
+
+                    }
+                }
             }
 
-            // 5. Salva fisicamente e importa
+            updatedCode = isolatedCode;
+            // =================================================================================
+            // FIM DA ADIÇÃO
+            // =================================================================================
+
+            // 6. Salva fisicamente e importa
             File.WriteAllText(uniquePath, updatedCode);
             
-            Log($"Arquivo de teste final salvo em: {uniquePath}");
+            Log($"Arquivo de teste final isolado e salvo em: {uniquePath}");
             return uniquePath;
         }
         #endregion
