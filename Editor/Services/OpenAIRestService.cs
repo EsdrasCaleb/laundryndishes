@@ -27,9 +27,10 @@ namespace LaundryNDishes.Services
         // O único método público, que segue o contrato da interface.
         public async Task<LLMResponse> GetResponseAsync(LLMRequestData requestData, bool debug=false)
         {
+            var config = requestData.Config;
             try
             {
-                var config = requestData.Config;
+
 
                 // 1. Construir o objeto da requisição de forma segura.
                 var requestBody = new ChatRequest
@@ -81,7 +82,7 @@ namespace LaundryNDishes.Services
             }
             catch (Exception ex)
             {
-                Debug.LogError("Error in OpenAIRestService: " + ex.Message);
+                Debug.LogError("Error in OpenAIRestService: " + ex.Message+" Server:"+config.LlmServerUrl);
                 return new LLMResponse { Success = false, ErrorMessage = ex.Message };
             }
         }
