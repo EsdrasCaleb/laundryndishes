@@ -24,7 +24,7 @@ namespace LaundryNDishes.UnityCore
         }
 
         // Define a configuração de usuário. A Unity cuida de salvar no UserSettings!
-        public static string LlmApiKey = new UserSetting<string>(
+        public static UserSetting<string> LlmApiKey = new UserSetting<string>(
             Settings, 
             "llmApiKey", // A chave para salvar
             "ollama",    // Valor padrão
@@ -80,7 +80,7 @@ namespace LaundryNDishes.UnityCore
         public string LlmApiKey
         {
             get => LnDUserSettings.LlmApiKey;
-            set => LnDUserSettings.LlmApiKey = value;
+            set => LnDUserSettings.LlmApiKe.SetValue(value,true);
         }
 
         public string PlayTestDestinationFolder => PlayModeTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(PlayModeTestAssembly)) : string.Empty;
