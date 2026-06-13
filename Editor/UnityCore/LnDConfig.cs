@@ -17,7 +17,11 @@ namespace LaundryNDishes.UnityCore
         [SerializeField] private string llmApiKey = "ollama";
         public string LlmApiKey { get => llmApiKey; set => llmApiKey = value; }
 
-        public void Save() => Save(true);
+        public void Save() 
+        {
+            EditorUtility.SetDirty(this);
+            Save(true);
+        }
     }
 
     // =========================================================================
@@ -96,10 +100,11 @@ namespace LaundryNDishes.UnityCore
         /// </summary>
         public void Save()
         {
-            // Salva os dados gerais em ProjectSettings/LaundryNDishesSettings.asset
+            // MODIFICAÇÃO: Garante o estado Dirty antes do Save
+            EditorUtility.SetDirty(this);
             Save(true);
             
-            // Salva a API Key de forma isolada em UserSettings/LaundryNDishesUserSettings.asset
+            // Salva a API Key de forma isolada em UserSettings
             LnDUserConfig.instance.Save();
         }
     }

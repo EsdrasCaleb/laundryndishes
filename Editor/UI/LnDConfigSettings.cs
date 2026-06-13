@@ -64,6 +64,7 @@ namespace LaundryNDishes.UI
             
             // Registra o estado atual para habilitar o sistema de Undo da Unity e marcar o arquivo como modificado
             Undo.RecordObject(config, "Modify Laundry & Dishes Settings");
+            Undo.RecordObject(LnDUserConfig.instance, "Modify Laundry & Dishes User Settings");
 
             // --- SELEÇÃO DO BANCO DE DADOS ATIVO ---
             EditorGUILayout.LabelField("Database Settings", EditorStyles.boldLabel);
