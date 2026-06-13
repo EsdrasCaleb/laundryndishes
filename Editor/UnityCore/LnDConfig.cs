@@ -79,7 +79,7 @@ namespace LaundryNDishes.UnityCore
         // MÁGICA AQUI: Redireciona o acesso da API Key para o Singleton de Usuário de forma transparente
         public string LlmApiKey
         {
-            get => LnDUserSettings.LlmApiKey.GetValue();
+            get => LnDUserSettings.LlmApiKey.GetValue().ToString();
             set 
 			{ 
 				if (LnDUserSettings.LlmApiKey.GetValue() != value)
