@@ -80,7 +80,7 @@ namespace LaundryNDishes.UnityCore
         public string LlmApiKey
         {
             get => LnDUserSettings.LlmApiKey.GetValue();
-            set =>
+            set 
 			{ 
 				if (LnDUserSettings.LlmApiKey.GetValue() != value)
                 {
