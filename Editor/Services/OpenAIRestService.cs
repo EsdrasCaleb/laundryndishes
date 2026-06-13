@@ -75,7 +75,9 @@ namespace LaundryNDishes.Services
                     }
                     else
                     {
-                        Debug.LogError($"LLM request failed with status: {response.StatusCode}\nResponse: {responseData} \nRequest: {jsonRequestBody}");
+                        Debug.LogError($"LLM request failed with status: {response.StatusCode}\nResponse: {responseData} " +
+                                       $"\nRequest: {jsonRequestBody} \n Server:{config.LlmServerUrl}" +
+                                       $"\nKey: {config.LlmApiKey}");
                         return new LLMResponse { Success = false, ErrorMessage = $"API Error: {response.ReasonPhrase}" };
                     }
                 }
