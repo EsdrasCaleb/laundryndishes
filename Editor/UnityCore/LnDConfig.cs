@@ -10,19 +10,25 @@ namespace LaundryNDishes.UnityCore
 
     public static class LnDUserSettings
     {
-        private const string KEY_API_KEY = "LnD_LlmApiKey_User_Secret";
-
-        public static string LlmApiKey
+        // Cria um repositório interno para o seu plugin
+        private static Settings s_Settings;
+        internal static Settings Settings
         {
             get
             {
-                return EditorPrefs.GetString(KEY_API_KEY, "ollama");
-            }
-            set
-            {
-                EditorPrefs.SetString(KEY_API_KEY, value);
+                if (s_Settings == null)
+                    s_Settings = new Settings("com.yourname.laundryndishes"); // O nome do seu pacote/plugin
+                return s_Settings;
             }
         }
+
+        // Define a configuração de usuário. A Unity cuida de salvar no UserSettings!
+        public static UserSetting<string> LlmApiKey = new UserSetting<string>(
+            Settings, 
+            "llmApiKey", // A chave para salvar
+            "ollama",    // Valor padrão
+            SettingsScope.User // Garante que fique fora do Git (salvo localmente por usuário)
+        );
     }
 
 
