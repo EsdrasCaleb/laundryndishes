@@ -27,7 +27,7 @@ namespace LaundryNDishes.UnityCore
         public static UserSetting<string> LlmApiKey = new UserSetting<string>(
             Settings, 
             "llmApiKey", // A chave para salvar
-            "ollama",    // Valor padrão
+            "",    // Valor padrão
             SettingsScope.User // Garante que fique fora do Git (salvo localmente por usuário)
         );
     }
@@ -79,14 +79,28 @@ namespace LaundryNDishes.UnityCore
         // MÁGICA AQUI: Redireciona o acesso da API Key para o Singleton de Usuário de forma transparente
         public string LlmApiKey
         {
-            get => LnDUserSettings.LlmApiKey.GetValue().ToString();
-            set 
-			{ 
-				if (LnDUserSettings.LlmApiKey.GetValue() != value)
+            get
+            {
+                string value= LnDUserSettings.LlmApiKey.GetValue().ToString();
+                if (value != "")
                 {
-					LnDUserSettings.LlmApiKey.SetValue(value,true);
-				}
-			}
+                    return value;
+                }
+                string envKey = Environment.GetEnvironmentVariable("UNITY_LLM_API_KEY");
+                if (!string.IsNullOrEmpty(envKey))
+                {
+                    return envKey;
+                }
+                
+                return "";
+            }
+            set 
+            { 
+                if (LnDUserSettings.LlmApiKey.GetValue() != value)
+                {
+                    LnDUserSettings.LlmApiKey.SetValue(value, true);
+                }
+            }
         }
 
         public string PlayTestDestinationFolder => PlayModeTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(PlayModeTestAssembly)) : string.Empty;
