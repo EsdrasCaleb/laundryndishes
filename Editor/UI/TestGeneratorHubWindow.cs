@@ -135,7 +135,7 @@ namespace LaundryNDishes.UI
 
             try
             {
-                var config = LnDConfig.Instance;
+                var config = LnDConfig.instance;
                 var llmService = config.GetCurrentService();
                 var generator = new UnitTestGenerator(llmService, config);
 
@@ -188,7 +188,7 @@ namespace LaundryNDishes.UI
             var scriptClass = _targetScript.GetClass();
             if (scriptClass == null) return;
 
-            var config = LnDConfig.Instance;
+            var config = LnDConfig.instance;
             var activeDb = config.ActiveDatabase;
 
             // Usa o analisador existente

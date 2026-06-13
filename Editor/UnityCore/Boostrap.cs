@@ -28,7 +28,7 @@ namespace LaundryNDishes.UnityCore
         private static void CheckDatabaseConfiguration()
         {
             // Acessa a instância única. Se a config não existir, ela é criada aqui.
-            var config = LnDConfig.Instance;
+            var config = LnDConfig.instance;
 
             // CASO 1: Ideal. A config já aponta para um banco de dados válido.
             if (config.ActiveDatabase != null) return;
@@ -51,7 +51,7 @@ namespace LaundryNDishes.UnityCore
                 {
                     string path = AssetDatabase.GUIDToAssetPath(databaseGUIDs[0]);
                     var db = AssetDatabase.LoadAssetAtPath<TestDatabase>(path);
-                    LnDConfig.Instance.SetActiveDatabase(db);
+                    LnDConfig.instance.SetActiveDatabase(db);
                     config.Save();
                     Debug.Log($"Laundry & Dishes: Base de dados '{db.name}' configurada como ativa.");
                 }
@@ -70,7 +70,7 @@ namespace LaundryNDishes.UnityCore
         /// </summary>
         public static void EnsureTestAssemblyExists()
         {
-            var config = LnDConfig.Instance;
+            var config = LnDConfig.instance;
             string testFolderPath = config.PlayTestDestinationFolder;
 
             // --- CASO 1: A pasta de testes não existe. ---
@@ -180,7 +180,7 @@ namespace LaundryNDishes.UnityCore
             AssetDatabase.SaveAssets();
             
             // Seta o DB na instância da config e salva.
-            var config = LnDConfig.Instance;
+            var config = LnDConfig.instance;
             config.SetActiveDatabase(newDb);
             config.Save();
             

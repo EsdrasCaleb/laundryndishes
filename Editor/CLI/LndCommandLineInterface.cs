@@ -52,7 +52,7 @@ namespace LaundryNDishes.CLI
                 }
 
                 // 4. Inicializa o gerador
-                var config = LnDConfig.Instance;
+                var config = LnDConfig.instance;
                 var llmService = config.GetCurrentService();
                 var generator = new UnitTestGenerator(llmService, config);
 
@@ -143,7 +143,7 @@ namespace LaundryNDishes.CLI
         /// </summary>
         private static async Task RunBatchGenerationAsync(string folderPath, string csvPath = null)
         {
-            var config = LnDConfig.Instance;
+            var config = LnDConfig.instance;
             var llmService = config.GetCurrentService();
             var generator = new UnitTestGenerator(llmService, config);
 

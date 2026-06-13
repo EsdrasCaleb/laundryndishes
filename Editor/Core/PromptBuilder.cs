@@ -17,7 +17,7 @@ namespace LaundryNDishes.Core
 
         public PromptBuilder()
         {
-            _customTemplatesPath = LnDConfig.Instance.CustomTemplatesFolder;
+            _customTemplatesPath = LnDConfig.instance.CustomTemplatesFolder;
             string scriptPath = GetCurrentFilePath();
             string corePath = Path.GetDirectoryName(scriptPath);
             string editorPath = Path.GetDirectoryName(corePath);

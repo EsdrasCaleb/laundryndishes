@@ -501,7 +501,7 @@ namespace LaundryNDishes.Core
             string isolatedCode = $"namespace LnDTests.{finalValidClassName}\n{{\n{rawCode}\n}}";
 
             // 5. Injeta o TearDown de segurança dentro da classe de teste gerada pela IA
-            if (type != TestType.Unitieditor&&LnDConfig.Instance.DefaultTearDown)
+            if (type != TestType.Unitieditor&&LnDConfig.instance.DefaultTearDown)
             {
                 isolatedCode = $"using UnityEngine.SceneManagement;\nusing System.Collections;\nusing UnityEngine.TestTools;\n\nnamespace LnDTests.{finalValidClassName}\n{{\n{rawCode}\n}}";
                 // Encontra a declaração da classe (independente do nome que a IA escolheu)
