@@ -84,7 +84,7 @@ namespace LaundryNDishes.UnityCore
 			{ 
 				if (LnDUserSettings.LlmApiKey.GetValue() != value)
                 {
-					LnDUserSettings.LlmApiKe.SetValue(value,true)
+					LnDUserSettings.LlmApiKe.SetValue(value,true);
 				}
 			};
         }
