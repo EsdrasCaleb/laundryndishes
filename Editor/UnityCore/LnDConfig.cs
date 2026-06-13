@@ -86,7 +86,7 @@ namespace LaundryNDishes.UnityCore
                 {
 					LnDUserSettings.LlmApiKe.SetValue(value,true);
 				}
-			};
+			}
         }
 
         public string PlayTestDestinationFolder => PlayModeTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(PlayModeTestAssembly)) : string.Empty;
