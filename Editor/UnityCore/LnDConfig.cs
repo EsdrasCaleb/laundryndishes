@@ -80,7 +80,13 @@ namespace LaundryNDishes.UnityCore
         public string LlmApiKey
         {
             get => LnDUserSettings.LlmApiKey.GetValue();
-            set => LnDUserSettings.LlmApiKe.SetValue(value,true);
+            set =>
+			{ 
+				if (LnDUserSettings.LlmApiKey.GetValue() != value)
+                {
+					LnDUserSettings.LlmApiKe.SetValue(value,true)
+				}
+			};
         }
 
         public string PlayTestDestinationFolder => PlayModeTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(PlayModeTestAssembly)) : string.Empty;
