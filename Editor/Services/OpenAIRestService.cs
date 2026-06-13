@@ -25,7 +25,7 @@ namespace LaundryNDishes.Services
         private static readonly HttpClient HttpClient = new HttpClient();
 
         // O único método público, que segue o contrato da interface.
-        public async Task<LLMResponse> GetResponseAsync(LLMRequestData requestData, bool debug=false)
+        public async Task<LLMResponse> GetResponseAsync(LLMRequestData requestData, bool debug = false)
         {
             var config = requestData.Config;
             try
@@ -82,7 +82,7 @@ namespace LaundryNDishes.Services
             }
             catch (Exception ex)
             {
-                Debug.LogError("Error in OpenAIRestService: " + ex.Message+" Server:"+config.LlmServerUrl);
+                Debug.LogError("Error in OpenAIRestService: " + ex.Message + " Server:" + config.LlmServerUrl);
                 return new LLMResponse { Success = false, ErrorMessage = ex.Message };
             }
         }

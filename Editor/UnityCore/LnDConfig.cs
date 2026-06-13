@@ -8,25 +8,24 @@ namespace LaundryNDishes.UnityCore
 {
     public enum LLMProviderType { OpenAIRestServer, LlamaCppDirect, UnitySentis }
 
-    // =========================================================================
-    // 1. SINGLETON DE CONFIGURAÇÕES DO USUÁRIO (Fica fora do Git)
-    // =========================================================================
-    [FilePath("UserSettings/LaundryNDishesUserSettings.asset", FilePathAttribute.Location.ProjectFolder)]
-    public class LnDUserConfig : ScriptableSingleton<LnDUserConfig>
+    public static class LnDUserSettings
     {
-        [SerializeField] private string llmApiKey = "ollama";
-        public string LlmApiKey { get => llmApiKey; set => llmApiKey = value; }
+        private const string KEY_API_KEY = "LnD_LlmApiKey_User_Secret";
 
-        public void Save() 
+        public static string LlmApiKey
         {
-            EditorUtility.SetDirty(this);
-            Save(true);
+            get
+            {
+                return EditorPrefs.GetString(KEY_API_KEY, "ollama");
+            }
+            set
+            {
+                EditorPrefs.SetString(KEY_API_KEY, value);
+            }
         }
     }
 
-    // =========================================================================
-    // 2. SINGLETON DE CONFIGURAÇÕES DO PROJETO (Vai para o Git)
-    // =========================================================================
+
     [FilePath("ProjectSettings/LaundryNDishesSettings.asset", FilePathAttribute.Location.ProjectFolder)]
     public class LnDConfig : ScriptableSingleton<LnDConfig>
     {
@@ -65,16 +64,16 @@ namespace LaundryNDishes.UnityCore
         public bool DefaultTearDown { get => defaultTearDown; set => defaultTearDown = value; }
         public string CustomTemplatesFolder { get => customTemplatesFolder; set => customTemplatesFolder = value; }
         public TestDatabase ActiveDatabase { get => activeDatabase; private set => activeDatabase = value; }
-        
+
         public AssemblyDefinitionAsset MainProjectAssembly { get => mainProjectAssembly; set => mainProjectAssembly = value; }
         public AssemblyDefinitionAsset PlayModeTestAssembly { get => playModeTestAssembly; set => playModeTestAssembly = value; }
         public AssemblyDefinitionAsset EditorTestAssembly { get => editorTestAssembly; set => editorTestAssembly = value; }
 
         // MÁGICA AQUI: Redireciona o acesso da API Key para o Singleton de Usuário de forma transparente
-        public string LlmApiKey 
-        { 
-            get => LnDUserConfig.instance.LlmApiKey; 
-            set => LnDUserConfig.instance.LlmApiKey = value; 
+        public string LlmApiKey
+        {
+            get => LnDUserSettings.LlmApiKey;
+            set => LnDUserSettings.LlmApiKey = value;
         }
 
         public string PlayTestDestinationFolder => PlayModeTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(PlayModeTestAssembly)) : string.Empty;
@@ -100,12 +99,8 @@ namespace LaundryNDishes.UnityCore
         /// </summary>
         public void Save()
         {
-            // MODIFICAÇÃO: Garante o estado Dirty antes do Save
             EditorUtility.SetDirty(this);
             Save(true);
-            
-            // Salva a API Key de forma isolada em UserSettings
-            LnDUserConfig.instance.Save();
         }
     }
 }
