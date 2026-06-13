@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using UnityEditor;
+using UnityEditor.SettingsManagement;
 using UnityEditorInternal;
 using UnityEngine;
 
@@ -23,7 +24,7 @@ namespace LaundryNDishes.UnityCore
         }
 
         // Define a configuração de usuário. A Unity cuida de salvar no UserSettings!
-        public static UserSetting<string> LlmApiKey = new UserSetting<string>(
+        public static string LlmApiKey = new UserSetting<string>(
             Settings, 
             "llmApiKey", // A chave para salvar
             "ollama",    // Valor padrão

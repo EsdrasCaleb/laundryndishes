@@ -2,6 +2,7 @@
     "name": "LnD_Editor",
     "rootNamespace": "",
     "references": [
+        "GUID:49818357e697641afb75d2f8acaf1861"
     ],
     "includePlatforms": [
         "Editor"
