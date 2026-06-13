@@ -24,30 +24,26 @@ namespace LaundryNDishes.UI
 
         public override void OnGUI(string searchContext)
         {
-            // Pega a instância única da configuração. A mágica do singleton acontece aqui.
-            var config = LnDConfig.Instance;
-            // --- INSERÇÃO DA TELEMETRIA ANÔNIMA (HASH INTEGRADO COM UNITY ID / ORG) ---
+            // MUDANÇA AQUI: Pegando a instância estendida do ScriptableSingleton da Unity
+            var config = LnDConfig.instance;
+            
+            // --- INSERÇÃO DA TELEMETRIA ANÔNIMA ---
             EditorGUILayout.LabelField("Telemetry & System Info", EditorStyles.boldLabel);
             
-            // 1. Captura identificadores nativos da conta Unity (Persistem entre múltiplos projetos)
             string unityId = CloudProjectSettings.userId;
             string orgId = CloudProjectSettings.organizationId;
             string devId = SystemInfo.deviceUniqueIdentifier;
 
-            // 2. Monta uma semente combinando o que estiver disponível para blindar contra 'root' ou IDs genéricos
             var seedBuilder = new System.Text.StringBuilder();
-            
             if (!string.IsNullOrEmpty(unityId)) seedBuilder.Append(unityId);
             if (!string.IsNullOrEmpty(orgId)) seedBuilder.Append(orgId);
             
-            // Adiciona o hardware se ele for válido e não for uma string genérica de ambiente virtualizado
             if (!string.IsNullOrEmpty(devId) && devId != "n/a" && !devId.Contains("00000000"))
             {
                 seedBuilder.Append(devId);
             }
             else if (seedBuilder.Length == 0) 
             {
-                // Fallback extremo (caso esteja em Docker totalmente offline e sem login na Unity)
                 seedBuilder.Append(System.Environment.MachineName).Append(System.Environment.UserName);
             }
 
@@ -58,13 +54,16 @@ namespace LaundryNDishes.UI
                 shortHash = System.BitConverter.ToString(hashBytes).Replace("-", "").Substring(0, 8).ToUpper();
             }
 
-            GUI.enabled = false; // Apenas leitura, mas permite cópia por parte do usuário
+            GUI.enabled = false; 
             EditorGUILayout.TextField("Anonymized Developer ID", shortHash);
-            GUI.enabled = true;  // Restaura o fluxo normal da UI
+            GUI.enabled = true;  
             EditorGUILayout.Space(10);
             // --------------------------------------------------------------------------
 
             EditorGUI.BeginChangeCheck(); // Inicia a detecção de mudanças na UI.
+            
+            // Registra o estado atual para habilitar o sistema de Undo da Unity e marcar o arquivo como modificado
+            Undo.RecordObject(config, "Modify Laundry & Dishes Settings");
 
             // --- SELEÇÃO DO BANCO DE DADOS ATIVO ---
             EditorGUILayout.LabelField("Database Settings", EditorStyles.boldLabel);
@@ -85,17 +84,15 @@ namespace LaundryNDishes.UI
 
             // --- CONFIGURAÇÕES DO LLM ---
             EditorGUILayout.Space(20);
-            EditorGUILayout.LabelField("LLM Settings (Local to this Machine)", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("LLM Settings", EditorStyles.boldLabel);
             config.ProviderType = (LLMProviderType)EditorGUILayout.EnumPopup("Connection Type", config.ProviderType);
 
-            // UI Condicional
             switch (config.ProviderType)
             {
                 case LLMProviderType.OpenAIRestServer:
                     config.LlmServerUrl = EditorGUILayout.TextField("Server URL", config.LlmServerUrl);
                     config.LlmModel = EditorGUILayout.TextField("Model Name", config.LlmModel);
                     config.LlmApiKey = EditorGUILayout.PasswordField("API Key", config.LlmApiKey);
-                    // Adicione aqui os outros campos que desejar para este modo
                     break;
                 
                 case LLMProviderType.UnitySentis:
@@ -112,7 +109,6 @@ namespace LaundryNDishes.UI
                     break;
             }
             
-            // Botão de teste para o modo Servidor
             if (config.ProviderType == LLMProviderType.OpenAIRestServer)
             {
                 GUI.enabled = !_isTestingConnection;
@@ -128,8 +124,7 @@ namespace LaundryNDishes.UI
             config.MaxAttempts = EditorGUILayout.IntField("Max Attempts (Per Test)", config.MaxAttempts);
             config.MaxCorrections = EditorGUILayout.IntField("Max Corrections (Per Attempt)", config.MaxCorrections);
             config.ShowAllLLmComm = EditorGUILayout.Toggle("Show LLM Communications", config.ShowAllLLmComm);
-            config.ShowAllLLmComm = EditorGUILayout.Toggle("Force Default TearDown", config.DefaultTearDown);
-            
+            config.DefaultTearDown = EditorGUILayout.Toggle("Force Default TearDown", config.DefaultTearDown); // Corrigido a atribuição que estava errada no seu código original (salvava em ShowAllLLmComm de novo)
             
             EditorGUILayout.Space(20);
             EditorGUILayout.LabelField("Assembly Configuration", EditorStyles.boldLabel);
@@ -141,10 +136,10 @@ namespace LaundryNDishes.UI
             
             EditorGUILayout.LabelField(new GUIContent("Custom Templates Folder (Optional)", "Deixe em branco para usar os templates padrão do plugin."));
             config.CustomTemplatesFolder = EditorGUILayout.TextField(" ", config.CustomTemplatesFolder);
-            // Se qualquer valor na UI mudou, o EndChangeCheck será true.
+
+            // Se mudou algo na UI, persistimos a alteração no arquivo físico do ProjectSettings
             if (EditorGUI.EndChangeCheck())
             {
-                // A UI simplesmente pede para a instância da config se salvar.
                 config.Save();
             }
         }
@@ -155,7 +150,8 @@ namespace LaundryNDishes.UI
             _connectionTestResult = "Testing...";
             try
             {
-                var config = LnDConfig.Instance;
+                // MUDANÇA AQUI: Atualizado para usar o padrão .instance
+                var config = LnDConfig.instance;
                 var llmService = config.GetCurrentService();
                 
                 var prompt = new Prompt();
