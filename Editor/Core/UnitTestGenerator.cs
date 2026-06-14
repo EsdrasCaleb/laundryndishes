@@ -497,8 +497,8 @@ namespace LaundryNDishes.Core
             // ADIÇÃO: ISOLAMENTO POR NAMESPACE E INJEÇÃO DE TEARDOWN AUTOMÁTICO
             // =================================================================================
             
-            // 4. Envolve todo o código gerado no namespace único para evitar qualquer colisão de nome de classe
-            string isolatedCode = $"namespace LnDTests.{finalValidClassName}\n{{\n{rawCode}\n}}";
+            // 4. Envolve ou injeta o código gerado no namespace único de isolação
+            string isolatedCode = IsolateGeneratedCode(rawCode, finalValidClassName);
 
             // 5. Injeta o TearDown de segurança dentro da classe de teste gerada pela IA
             if (type != TestType.Unitieditor&&LnDConfig.instance.DefaultTearDown)
@@ -560,6 +560,60 @@ namespace LaundryNDishes.Core
             Log($"Arquivo de teste final isolado e salvo em: {uniquePath}");
             return uniquePath;
         }
+        public static string IsolateGeneratedCode(string rawCode, string finalValidClassName)
+        {
+            string isolationNamespace = $"LnDTests.{finalValidClassName}";
+
+            // Regex para capturar a palavra "namespace" e o nome dele (ex: MeuJogo.Tests)
+            var namespaceRegex = new Regex(@"\bnamespace\s+([\w\.]+)");
+            var match = namespaceRegex.Match(rawCode);
+
+            if (match.Success)
+            {
+                string existingNamespace = match.Groups[1].Value;
+                int indexAfterNamespaceName = match.Index + match.Length;
+
+                // Vamos descobrir se o namespace original é File-Scoped (termina com ';') 
+                // ou Block-Scoped (usa chaves '{ }') procurando o próximo caractere válido.
+                char terminator = ' ';
+                int terminatorIndex = -1;
+                for (int i = indexAfterNamespaceName; i < rawCode.Length; i++)
+                {
+                    if (rawCode[i] == ';' || rawCode[i] == '{')
+                    {
+                        terminator = rawCode[i];
+                        terminatorIndex = i;
+                        break;
+                    }
+                }
+
+                // --- CENÁRIO A: Namespace é File-Scoped (ex: namespace MeuJogo.Tests;) ---
+                // C# não permite aninhar blocos de chaves dentro de um arquivo file-scoped.
+                // A única forma correta e elegante é estender o nome usando um ponto '.'
+                if (terminator == ';')
+                {
+                    // Transforma: "namespace MeuJogo.Tests;" -> "namespace MeuJogo.Tests.LnDTests.NomeDaClasse;"
+                    return rawCode.Replace($"namespace {existingNamespace}", $"namespace {existingNamespace}.{isolationNamespace}");
+                }
+
+                // --- CENÁRIO B: Namespace é Block-Scoped (ex: namespace MeuJogo.Tests { ) ---
+                if (terminator == '{')
+                {
+                    // Injeta o seu namespace de isolação LOGO APÓS a abertura da chave '{' do original
+                    // E adiciona uma chave de fechamento '}' no final do arquivo.
+                    string beforeBrace = rawCode.Substring(0, terminatorIndex + 1);
+                    string afterBrace = rawCode.Substring(terminatorIndex + 1);
+
+                    return $"{beforeBrace}\nnamespace {isolationNamespace}\n{{\n{afterBrace}\n}}";
+                }
+            }
+
+            // --- CENÁRIO C: Não há nenhum namespace no arquivo original ---
+            // Envolve todo o código normalmente como você já fazia
+            return $"namespace {isolationNamespace}\n{{\n{rawCode}\n}}";
+        }
         #endregion
     }
+    
+    
 }

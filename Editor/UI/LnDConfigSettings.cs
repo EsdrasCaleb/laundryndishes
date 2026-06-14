@@ -11,6 +11,9 @@ namespace LaundryNDishes.UI
     {
         private static string _connectionTestResult = "Waiting for test...";
         private static bool _isTestingConnection = false;
+        
+        // Controla o estado aberto/fechado da caixa de configurações compartilháveis (Inicia aberto por padrão)
+        private static bool _globalSettingsFoldout = true; 
 
         public LnDConfigSettings(string path, SettingsScope scopes) : base(path, scopes) { }
 
@@ -24,10 +27,9 @@ namespace LaundryNDishes.UI
 
         public override void OnGUI(string searchContext)
         {
-            // MUDANÇA AQUI: Pegando a instância estendida do ScriptableSingleton da Unity
             var config = LnDConfig.instance;
-
-            // --- INSERÇÃO DA TELEMETRIA ANÔNIMA ---
+            
+            // --- TELEMETRIA E INFO DO SISTEMA ---
             EditorGUILayout.LabelField("Telemetry & System Info", EditorStyles.boldLabel);
 
             string unityId = CloudProjectSettings.userId;
@@ -58,75 +60,115 @@ namespace LaundryNDishes.UI
             EditorGUILayout.TextField("Anonymized Developer ID", shortHash);
             GUI.enabled = true;
             EditorGUILayout.Space(10);
+            
             // --------------------------------------------------------------------------
-
-            EditorGUI.BeginChangeCheck(); // Inicia a detecção de mudanças na UI.
-
-            // Registra o estado atual para habilitar o sistema de Undo da Unity e marcar o arquivo como modificado
+            // PASSO IMPORTANTE: Iniciamos a detecção de mudanças e o Undo ANTES do novo botão
+            // para que a alternância do escopo também possa ser desfeita pelo Ctrl+Z.
+            EditorGUI.BeginChangeCheck(); 
             Undo.RecordObject(config, "Modify Laundry & Dishes Settings");
 
-            // --- SELEÇÃO DO BANCO DE DADOS ATIVO ---
-            EditorGUILayout.LabelField("Database Settings", EditorStyles.boldLabel);
-            var newDatabase = EditorGUILayout.ObjectField("Active Test Database", config.ActiveDatabase, typeof(TestDatabase), false) as TestDatabase;
-            if (newDatabase != config.ActiveDatabase)
+            // --- CONFIGURAÇÃO DE ESCOPO E ARMAZENAMENTO ---
+            EditorGUILayout.LabelField("Storage Scope Configuration", EditorStyles.boldLabel);
+            
+            // Checkbox: por padrão vem falso (ou seja, usa o comportamento Global compartilhado via EditorPrefs)
+            config.UseProjectSettingsOnly = EditorGUILayout.ToggleLeft(
+                new GUIContent("Isolate Settings to this Project Only", 
+                "Se marcado, ignora o EditorPrefs global da máquina e salva tudo (inclusive chaves) estritamente no arquivo local ProjectSettings. asset."), 
+                config.UseProjectSettingsOnly
+            );
+
+            // Exibe um HelpBox contextual informando ao desenvolvedor o que está acontecendo
+            if (config.UseProjectSettingsOnly)
             {
-                config.SetActiveDatabase(newDatabase);
+                EditorGUILayout.HelpBox("Modo Isolado Ativo: As configurações contidas na caixa abaixo pertencem única e exclusivamente a este projeto.", MessageType.Info);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox("Modo Global Ativo: As configurações contidas na caixa abaixo são salvas no EditorPrefs e serão compartilhadas com qualquer outro projeto aberto nesta máquina.", MessageType.Warning);
             }
 
-            if (config.ActiveDatabase == null)
+            EditorGUILayout.Space(10);
+
+            // --- GRUPO COLAPSÁVEL DE CONFIGURAÇÕES (AFETADAS PELO ESCOPO GLOBAL/LOCAL) ---
+            string foldoutTitle = $"Core Configuration Data (Current Scope: {(config.UseProjectSettingsOnly ? "Project Isolated" : "Machine Global")})";
+            _globalSettingsFoldout = EditorGUILayout.Foldout(_globalSettingsFoldout, foldoutTitle, true);
+            
+            if (_globalSettingsFoldout)
             {
-                EditorGUILayout.HelpBox("Nenhum banco de dados selecionado.", MessageType.Warning);
-                if (GUILayout.Button("Create New Database"))
+                // Inicia o container visual "box" que envelopa os campos afetados pelo escopo
+                EditorGUILayout.BeginVertical("box");
+                EditorGUILayout.Space(5);
+
+                // --- SELEÇÃO DO BANCO DE DADOS ATIVO ---
+                EditorGUILayout.LabelField("Database Settings", EditorStyles.boldLabel);
+                var newDatabase = EditorGUILayout.ObjectField("Active Test Database", config.ActiveDatabase, typeof(TestDatabase), false) as TestDatabase;
+                if (newDatabase != config.ActiveDatabase)
                 {
-                    Bootstrap.CreateNewDatabase();
+                    config.SetActiveDatabase(newDatabase);
                 }
-            }
 
-            // --- CONFIGURAÇÕES DO LLM ---
-            EditorGUILayout.Space(20);
-            EditorGUILayout.LabelField("LLM Settings", EditorStyles.boldLabel);
-            config.ProviderType = (LLMProviderType)EditorGUILayout.EnumPopup("Connection Type", config.ProviderType);
+                if (config.ActiveDatabase == null)
+                {
+                    EditorGUILayout.HelpBox("Nenhum banco de dados selecionado.", MessageType.Warning);
+                    if (GUILayout.Button("Create New Database"))
+                    {
+                        Bootstrap.CreateNewDatabase();
+                    }
+                }
 
-            switch (config.ProviderType)
-            {
-                case LLMProviderType.OpenAIRestServer:
-                    config.LlmServerUrl = EditorGUILayout.TextField("Server URL", config.LlmServerUrl);
-                    config.LlmModel = EditorGUILayout.TextField("Model Name", config.LlmModel);
-                    config.LlmApiKey = EditorGUILayout.PasswordField("API Key", config.LlmApiKey);
-                    break;
+                // --- CONFIGURAÇÕES DO LLM ---
+                EditorGUILayout.Space(15);
+                EditorGUILayout.LabelField("LLM Settings", EditorStyles.boldLabel);
+                config.ProviderType = (LLMProviderType)EditorGUILayout.EnumPopup("Connection Type", config.ProviderType);
 
-                case LLMProviderType.UnitySentis:
-                    config.OnnxModelPath = EditorGUILayout.TextField("ONNX Model Path", config.OnnxModelPath);
-                    config.TokenizerPath = EditorGUILayout.TextField("Tokenizer Path", config.TokenizerPath);
-                    break;
+                switch (config.ProviderType)
+                {
+                    case LLMProviderType.OpenAIRestServer:
+                        config.LlmServerUrl = EditorGUILayout.TextField("Server URL", config.LlmServerUrl);
+                        config.LlmModel = EditorGUILayout.TextField("Model Name", config.LlmModel);
+                        config.LlmApiKey = EditorGUILayout.PasswordField("API Key", config.LlmApiKey);
+                        break;
 
-                case LLMProviderType.LlamaCppDirect:
-                    EditorGUILayout.HelpBox("Direct Llama.cpp connection is not yet implemented.", MessageType.Info);
-                    GUI.enabled = false;
-                    config.LlamaCppPath = EditorGUILayout.TextField("Llama.cpp Executable Path", config.LlamaCppPath);
-                    config.GgufModelFile = EditorGUILayout.TextField("GGUF Model File Path", config.GgufModelFile);
+                    case LLMProviderType.UnitySentis:
+                        config.OnnxModelPath = EditorGUILayout.TextField("ONNX Model Path", config.OnnxModelPath);
+                        config.TokenizerPath = EditorGUILayout.TextField("Tokenizer Path", config.TokenizerPath);
+                        break;
+
+                    case LLMProviderType.LlamaCppDirect:
+                        EditorGUILayout.HelpBox("Direct Llama.cpp connection is not yet implemented.", MessageType.Info);
+                        GUI.enabled = false;
+                        config.LlamaCppPath = EditorGUILayout.TextField("Llama.cpp Executable Path", config.LlamaCppPath);
+                        config.GgufModelFile = EditorGUILayout.TextField("GGUF Model File Path", config.GgufModelFile);
+                        GUI.enabled = true;
+                        break;
+                }
+
+                if (config.ProviderType == LLMProviderType.OpenAIRestServer)
+                {
+                    GUI.enabled = !_isTestingConnection;
+                    if (GUILayout.Button("Test Connection")) { TestConnection(); }
                     GUI.enabled = true;
-                    break;
+                    EditorGUILayout.HelpBox(_connectionTestResult, MessageType.None);
+                }
+
+                // --- CONFIGURAÇÕES DE GERAÇÃO ---
+                EditorGUILayout.Space(15);
+                EditorGUILayout.LabelField("Generation Settings", EditorStyles.boldLabel);
+                config.Temperature = EditorGUILayout.Slider("Temperature", config.Temperature, 0f, 2f);
+                config.MaxTokens = EditorGUILayout.IntField("Max Tokens", config.MaxTokens);
+                config.MaxAttempts = EditorGUILayout.IntField("Max Attempts (Per Test)", config.MaxAttempts);
+                config.MaxCorrections = EditorGUILayout.IntField("Max Corrections (Per Attempt)", config.MaxCorrections);
+                config.ShowAllLLmComm = EditorGUILayout.Toggle("Show LLM Communications", config.ShowAllLLmComm);
+                config.DefaultTearDown = EditorGUILayout.Toggle("Force Default TearDown", config.DefaultTearDown);
+
+                EditorGUILayout.Space(5);
+                EditorGUILayout.EndVertical(); // Fecha o container visual "box"
             }
 
-            if (config.ProviderType == LLMProviderType.OpenAIRestServer)
-            {
-                GUI.enabled = !_isTestingConnection;
-                if (GUILayout.Button("Test Connection")) { TestConnection(); }
-                GUI.enabled = true;
-                EditorGUILayout.HelpBox(_connectionTestResult, MessageType.None);
-            }
-
-            EditorGUILayout.Space(20);
-            EditorGUILayout.LabelField("Generation Settings", EditorStyles.boldLabel);
-            config.Temperature = EditorGUILayout.Slider("Temperature", config.Temperature, 0f, 2f);
-            config.MaxTokens = EditorGUILayout.IntField("Max Tokens", config.MaxTokens);
-            config.MaxAttempts = EditorGUILayout.IntField("Max Attempts (Per Test)", config.MaxAttempts);
-            config.MaxCorrections = EditorGUILayout.IntField("Max Corrections (Per Attempt)", config.MaxCorrections);
-            config.ShowAllLLmComm = EditorGUILayout.Toggle("Show LLM Communications", config.ShowAllLLmComm);
-            config.DefaultTearDown = EditorGUILayout.Toggle("Force Default TearDown", config.DefaultTearDown); // Corrigido a atribuição que estava errada no seu código original (salvava em ShowAllLLmComm de novo)
-
-            EditorGUILayout.Space(20);
+            // ==========================================================================
+            // CONFIGURAÇÕES ESTREITAMENTE LOCAIS (Sempre fora da caixa e nunca vão para o EditorPrefs)
+            // ==========================================================================
+            EditorGUILayout.Space(25);
             EditorGUILayout.LabelField("Assembly Configuration", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox("Arraste aqui os arquivos de Assembly Definition (.asmdef) do seu projeto.", MessageType.Info);
 
@@ -134,10 +176,11 @@ namespace LaundryNDishes.UI
             config.PlayModeTestAssembly = EditorGUILayout.ObjectField("Play Mode Tests Assembly", config.PlayModeTestAssembly, typeof(AssemblyDefinitionAsset), false) as AssemblyDefinitionAsset;
             config.EditorTestAssembly = EditorGUILayout.ObjectField("Editor Tests Assembly", config.EditorTestAssembly, typeof(AssemblyDefinitionAsset), false) as AssemblyDefinitionAsset;
 
+            EditorGUILayout.Space(10);
             EditorGUILayout.LabelField(new GUIContent("Custom Templates Folder (Optional)", "Deixe em branco para usar os templates padrão do plugin."));
             config.CustomTemplatesFolder = EditorGUILayout.TextField(" ", config.CustomTemplatesFolder);
 
-            // Se mudou algo na UI, persistimos a alteração no arquivo físico do ProjectSettings
+            // Se mudou algo em qualquer parte da UI, salvamos as alterações
             if (EditorGUI.EndChangeCheck())
             {
                 config.Save();
@@ -150,7 +193,6 @@ namespace LaundryNDishes.UI
             _connectionTestResult = "Testing...";
             try
             {
-                // MUDANÇA AQUI: Atualizado para usar o padrão .instance
                 var config = LnDConfig.instance;
                 var llmService = config.GetCurrentService();
 
