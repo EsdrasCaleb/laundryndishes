@@ -569,107 +569,66 @@ namespace LaundryNDishes.Core
             // Envolve todo o código normalmente como você já fazia
             return $"namespace {isolationNamespace}\n{{\n{rawCode}\n}}";
         }
+
+
         private string InjectDefaultTearDownWithRoslyn(string sourceCode)
-{
-    // 1. Transforma a string de código em uma árvore de sintaxe real
-    SyntaxTree tree = CSharpSyntaxTree.ParseText(sourceCode);
-    CompilationUnitSyntax root = (CompilationUnitSyntax)tree.GetRoot();
-
-    // 2. Encontra todas as declarações de classe no arquivo gerado pela IA
-    var allClasses = root.DescendantNodes().OfType<ClassDeclarationSyntax>().ToList();
-    
-    // 3. Filtra para encontrar APENAS as classes que possuem características de teste
-    var testClasses = allClasses.Where(IsTargetTestClass).ToList();
-
-    // Fallback de segurança: Se a IA não colocou atributos óbvios, buscamos classes que tenham "Test" no nome
-    if (testClasses.Count == 0)
-    {
-        var fallback = allClasses.FirstOrDefault(c => c.Identifier.Text.Contains("Test", System.StringComparison.OrdinalIgnoreCase));
-        if (fallback != null) testClasses.Add(fallback);
-    }
-
-    // Se mesmo assim não achou nenhuma classe viável, retorna o código intacto para não quebrar
-    if (testClasses.Count == 0) return sourceCode;
-
-    // 4. Código dos métodos usando Fully Qualified Names (Nomes Completos)
-    // Usar nomes completos (ex: System.Collections.IEnumerator) evita a necessidade de injetar 
-    // "usings" no topo do arquivo, o que poderia quebrar dependendo de diretivas #if da IA.
-    string methodsToInjectText = @"
-        [UnityEngine.TestTools.UnitySetUp]
-        public System.Collections.IEnumerator LnDDefaultReloadScene()
         {
-            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            yield return UnityEngine.SceneManagement.SceneManager.LoadSceneAsync(scene.name, UnityEngine.SceneManagement.LoadSceneMode.Single);
-        }
+            SyntaxTree tree = CSharpSyntaxTree.ParseText(sourceCode);
+            CompilationUnitSyntax root = (CompilationUnitSyntax)tree.GetRoot();
 
-        [UnityEngine.TestTools.UnityTearDown]
-        public System.Collections.IEnumerator LnDDefaultClearScene()
-        {
-            var roots = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
-            foreach (var go in roots)
-            {
-                if (go != null)
+            // 1. Encontra todas as declarações de classe no arquivo
+            var allClasses = root.DescendantNodes().OfType<ClassDeclarationSyntax>().ToList();
+            
+            // 2. Filtra cirurgicamente: só entram classes que DE FATO possuem métodos de teste ou o atributo da classe
+            var testClasses = allClasses.Where(ScriptMethodAnalyzer.IsTargetTestClass).ToList();
+
+            // Se nenhuma classe de teste real foi encontrada, devolve o código intacto
+            if (testClasses.Count == 0) return sourceCode;
+
+            // 3. Métodos usando Fully Qualified Names (evita injetar usings no topo)
+            string methodsToInjectText = @"
+                [UnityEngine.TestTools.UnitySetUp]
+                public System.Collections.IEnumerator LnDDefaultReloadScene()
                 {
-                    UnityEngine.Object.DestroyImmediate(go);
+                    var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+                    yield return UnityEngine.SceneManagement.SceneManager.LoadSceneAsync(scene.name, UnityEngine.SceneManagement.LoadSceneMode.Single);
+                }
+
+                [UnityEngine.TestTools.UnityTearDown]
+                public System.Collections.IEnumerator LnDDefaultClearScene()
+                {
+                    var roots = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+                    foreach (var go in roots)
+                    {
+                        if (go != null)
+                        {
+                            UnityEngine.Object.DestroyImmediate(go);
+                        }
+                    }
+                    yield return null; 
+                }
+        ";
+
+            var elementsToInject = CSharpSyntaxTree.ParseText(methodsToInjectText)
+                .GetCompilationUnitRoot()
+                .Members;
+
+            // Rastreia as classes identificadas para modificação na árvore imutável do Roslyn
+            root = root.TrackNodes(testClasses);
+
+            foreach (var originalClass in testClasses)
+            {
+                var currentClass = root.GetCurrentNode(originalClass);
+                if (currentClass != null)
+                {
+                    // Injeta no índice 0 (topo da classe)
+                    var updatedClass = currentClass.WithMembers(currentClass.Members.InsertRange(0, elementsToInject));
+                    root = root.ReplaceNode(currentClass, updatedClass);
                 }
             }
-            yield return null; 
+
+            return root.ToFullString();
         }
-";
-
-    // Converte o bloco de texto acima em nós de sintaxe válidos do Roslyn
-    var elementsToInject = CSharpSyntaxTree.ParseText(methodsToInjectText)
-        .GetCompilationUnitRoot()
-        .Members;
-
-    // Como as árvores do Roslyn são imutáveis, usamos o TrackNodes para rastrear as classes
-    // que queremos modificar enquanto alteramos a árvore global.
-    root = root.TrackNodes(testClasses);
-
-    foreach (var originalClass in testClasses)
-    {
-        var currentClass = root.GetCurrentNode(originalClass);
-        if (currentClass != null)
-        {
-            // Injeta os novos métodos estritamente no índice 0 (no topo da classe, logo após o '{')
-            var updatedClass = currentClass.WithMembers(currentClass.Members.InsertRange(0, elementsToInject));
-            root = root.ReplaceNode(currentClass, updatedClass);
-        }
-    }
-
-    // Retorna o código final perfeitamente formatado e injetado
-    return root.ToFullString();
-}
-
-private bool IsTargetTestClass(ClassDeclarationSyntax classDecl)
-{
-    string className = classDecl.Identifier.Text;
-
-    // Regra 1: Ignora explicitamente classes que nitidamente são Mocks, Fakes ou Stubs auxiliares
-    if (className.Contains("Mock") || className.Contains("Fake") || className.Contains("Stub") || className.Contains("Helper"))
-    {
-        return false;
-    }
-
-    // Regra 2: Verifica se a classe possui o atributo clássico [TestFixture] do NUnit
-    bool hasTestFixture = classDecl.AttributeLists
-        .SelectMany(al => al.Attributes)
-        .Any(a => a.Name.ToString().Contains("TestFixture"));
-    
-    if (hasTestFixture) return true;
-
-    // Regra 3: Varre os métodos da classe procurando por atributos de execução de testes da Unity/NUnit
-    bool hasTestMethods = classDecl.Members
-        .OfType<MethodDeclarationSyntax>()
-        .Any(m => m.AttributeLists
-            .SelectMany(al => al.Attributes)
-            .Any(a => {
-                string attrName = a.Name.ToString();
-                return attrName.Contains("Test") || attrName.Contains("SetUp") || attrName.Contains("TearDown");
-            }));
-
-    return hasTestMethods;
-}
         #endregion
     }
     

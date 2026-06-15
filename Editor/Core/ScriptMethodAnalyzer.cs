@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using UnityEngine;
@@ -112,5 +113,75 @@ namespace LaundryNDishes.Core // Ajuste para o namespace correto do seu projeto
                 .OfType<MethodDeclarationSyntax>()
                 .Any(m => m.Identifier.ValueText == methodName);
         }
+        /// <summary>
+        /// Determina se uma classe é uma classe de teste válida baseada no seu conteúdo.
+        /// </summary>
+        public static bool IsTargetTestClass(ClassDeclarationSyntax classDecl)
+        {
+            // Classes de teste não podem ser abstratas (Unity/NUnit não as executa diretamente)
+            if (classDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.AbstractKeyword)))
+            {
+                return false;
+            }
+
+            // Critério 1: A classe possui explicitamente o atributo [TestFixture]
+            bool hasTestFixture = classDecl.AttributeLists
+                .SelectMany(al => al.Attributes)
+                .Any(a => {
+                    string name = a.Name.ToString();
+                    return name == "TestFixture" || name.EndsWith(".TestFixture");
+                });
+    
+            if (hasTestFixture) return true;
+
+            // Critério 2: A classe contém pelo menos UM método de teste (Usa o método auxiliar abaixo)
+            bool containsTestMethods = classDecl.Members
+                .OfType<MethodDeclarationSyntax>()
+                .Any(IsTestMethod);
+
+            return containsTestMethods;
+        }
+
+        /// <summary>
+        /// Método auxiliar sugerido: Avalia se um método possui atributos de teste do NUnit ou Unity.
+        /// </summary>
+        public static bool IsTestMethod(MethodDeclarationSyntax methodDecl)
+        {
+            return methodDecl.AttributeLists
+                .SelectMany(al => al.Attributes)
+                .Any(a => {
+                    string attrName = a.Name.ToString();
+            
+                    // Atende tanto a sintaxe curta [Test] quanto completas [NUnit.Framework.Test]
+                    return attrName == "Test" || 
+                           attrName.EndsWith(".Test") || 
+                           attrName == "UnityTest" || 
+                           attrName.EndsWith(".UnityTest");
+                });
+        }
+        
+        /// <summary>
+        /// [Sobrecarga Reflection] Avalia se um método compilado possui atributos de teste do NUnit ou Unity.
+        /// </summary>
+        public static bool IsTestMethod(MethodInfo methodInfo)
+        {
+            if (methodInfo == null) return false;
+
+            return Attribute.IsDefined(methodInfo, typeof(NUnit.Framework.TestAttribute)) || 
+                   Attribute.IsDefined(methodInfo, typeof(UnityEngine.TestTools.UnityTestAttribute));
+        }
+
+        /// <summary>
+        /// Extrai via Reflection todos os métodos de teste declarados diretamente no tipo (evita heranças e propriedades).
+        /// </summary>
+        public static IEnumerable<MethodInfo> GetTestMethods(Type scriptType)
+        {
+            if (scriptType == null) return Enumerable.Empty<MethodInfo>();
+
+            return scriptType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
+                .Where(m => !m.IsSpecialName && m.DeclaringType == scriptType && IsTestMethod(m));
+        }
     }
+    
+   
 }

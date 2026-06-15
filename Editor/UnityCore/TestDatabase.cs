@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using LaundryNDishes.Core;
 using UnityEditor;
 using UnityEngine;
 using LaundryNDishes.Data;
@@ -112,15 +113,9 @@ namespace LaundryNDishes.UnityCore
                         string className = scriptType.FullName ?? scriptType.Name;
                         var updatedList = new List<IndividualTestResult>();
 
-                        foreach (var method in currentMethods)
+                    // Consome a filtragem inteligente e centralizada do utilitário
+                        foreach (var method in ScriptMethodAnalyzer.GetTestMethods(scriptType))
                         {
-                            bool isTest = System.Attribute.IsDefined(method, typeof(NUnit.Framework.TestAttribute)) || 
-                                          System.Attribute.IsDefined(method, typeof(UnityEngine.TestTools.UnityTestAttribute));
-    
-                            if (!isTest) continue;
-                            // Filtra apenas métodos declarados diretamente na classe de teste (evita heranças)
-                            if (method.DeclaringType != scriptType || method.IsSpecialName) continue;
-
                             string testName = method.Name;
                             string fullName = $"{className}.{testName}";
 
