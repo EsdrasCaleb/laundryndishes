@@ -498,13 +498,12 @@ namespace LaundryNDishes.Core
             // =================================================================================
             
             // 4. Envolve ou injeta o código gerado no namespace único de isolação
-            string isolatedCode = IsolateGeneratedCode(rawCode, finalValidClassName);
+            string isolatedCode = this.IsolateGeneratedCode(rawCode, finalValidClassName);
 
             // 5. Injeta o TearDown de segurança dentro da classe de teste gerada pela IA
             if (type != TestType.Unitieditor&&LnDConfig.instance.DefaultTearDown)
             {
-                isolatedCode = $"using UnityEngine.SceneManagement;\nusing System.Collections;\nusing UnityEngine.TestTools;\n\nnamespace LnDTests.{finalValidClassName}\n{{\n{rawCode}\n}}";
-                // Encontra a declaração da classe (independente do nome que a IA escolheu)
+                 // Encontra a declaração da classe (independente do nome que a IA escolheu)
                 Match classMatch = Regex.Match(isolatedCode, @"\bclass\s+\w+");
                 if (classMatch.Success)
                 {
@@ -560,7 +559,7 @@ namespace LaundryNDishes.Core
             Log($"Arquivo de teste final isolado e salvo em: {uniquePath}");
             return uniquePath;
         }
-        public static string IsolateGeneratedCode(string rawCode, string finalValidClassName)
+        private string IsolateGeneratedCode(string rawCode, string finalValidClassName)
         {
             string isolationNamespace = $"LnDTests.{finalValidClassName}";
 
