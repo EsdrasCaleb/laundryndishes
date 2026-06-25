@@ -126,7 +126,8 @@ namespace LaundryNDishes.UI
                 "Data collected:\n" +
                 "• Unity version | Plugin version\n" +
                 "• Feature usage (Test Generation / CLI)\n" +
-                "• Anonymous identifiers for generated test targets\n\n" +
+                "• Test Execution outcome\n" +
+                "• Anonymous identifiers for the User\n\n" +
                 "Source code, prompts, personal data or file paths are NEVER collected.",
                 MessageType.Info
             );
@@ -313,7 +314,7 @@ namespace LaundryNDishes.UI
                                            "2. Navigate to: Studio ➔ Vibe CLI.\n" +
                                            "3. Copy the token and paste it into the field below.", EditorStyles.wordWrappedLabel);
                 EditorGUILayout.Space(5);
-                if (GUILayout.Button("🔗 Go to Mistral Console", GUILayout.Width(200))) Help.BrowseURL("https://console.mistral.ai/");
+                if (GUILayout.Button("🔗 Go to Mistral Console", GUILayout.Width(200))) Help.BrowseURL("https://console.mistral.ai/codestral/cli");
                 EditorGUILayout.EndVertical();
                 
                 EditorGUILayout.Space(10);

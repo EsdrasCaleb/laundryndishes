@@ -109,7 +109,7 @@ namespace LaundryNDishes.Core
             {
                 templatePath = Path.Combine(_defaultTemplatesPath, templateFileName);
             }
-
+            Debug.Log($"Template path: {templatePath}");
             // O resto da lógica de cache e renderização permanece.
             if (!_templateCache.TryGetValue(templatePath, out var template))
             {
