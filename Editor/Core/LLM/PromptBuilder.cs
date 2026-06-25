@@ -18,8 +18,8 @@ namespace LaundryNDishes.Core
         {
             _customTemplatesPath = LnDConfig.instance.CustomTemplatesFolder;
             string scriptPath = GetCurrentFilePath();
-            string corePath = Path.GetDirectoryName(scriptPath);
-            string editorPath = Path.GetDirectoryName(corePath);
+            string coreModelPath = Path.GetDirectoryName(scriptPath);
+            string editorPath = Path.GetDirectoryName(Path.GetDirectoryName(coreModelPath));
             _defaultTemplatesPath = Path.Combine(editorPath, "Templates");
         }
 
@@ -109,7 +109,7 @@ namespace LaundryNDishes.Core
             {
                 templatePath = Path.Combine(_defaultTemplatesPath, templateFileName);
             }
-            Debug.Log($"Template path: {templatePath}");
+
             // O resto da lógica de cache e renderização permanece.
             if (!_templateCache.TryGetValue(templatePath, out var template))
             {
