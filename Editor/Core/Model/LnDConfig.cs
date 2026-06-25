@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace LaundryNDishes.Core
 {
-    public enum LLMProviderType { OpenAIRestServer, LlamaCppDirect, UnitySentis }
+    public enum LLMProviderType { OpenAIRestServer, LlamaCppDirect/*, UnitySentis*/ }
 
     [FilePath("ProjectSettings/LaundryNDishesSettings.asset", FilePathAttribute.Location.ProjectFolder)]
     public class LnDConfig : ScriptableSingleton<LnDConfig>
@@ -23,16 +23,18 @@ namespace LaundryNDishes.Core
         [SerializeField] private string llmApiKey = string.Empty;
 
         [SerializeField] private LLMProviderType providerType = LLMProviderType.OpenAIRestServer;
-        [SerializeField] private string llmServerUrl = "http://localhost:11434/v1/chat/completions";
-        [SerializeField] private string llmModel = "gemma:2b";
-        [SerializeField] private string llamaCppPath = "C:/path/to/llama.cpp/main.exe";
-        [SerializeField] private string ggufModelFile = "C:/path/to/models/model.gguf";
-        [SerializeField] private string onnxModelPath = "Assets/Models/my_llm.onnx";
-        [SerializeField] private string tokenizerPath = "Assets/Models/tokenizer.json";
+        [SerializeField] private string llmServerUrl = "";
+        [SerializeField] private string llmModel = "";
+        [SerializeField] private string llamaCppPath = "";
+        [SerializeField] private string ggufModelFile = "";
+        [SerializeField] private string onnxModelPath = "";
+        [SerializeField] private string tokenizerPath = "";
         [SerializeField] private float temperature = 0.7f;
         [SerializeField] private int maxTokens = 2048;
         
         // Estes campos abaixo SEMPRE ficam restritos apenas ao ProjectSettings (nunca vão para o EditorPrefs)
+        [SerializeField] private bool useAssemblyDef = true;
+        [SerializeField] private DefaultAsset testFolderAsset;
         [SerializeField] private AssemblyDefinitionAsset mainProjectAssembly;
         [SerializeField] private AssemblyDefinitionAsset playModeTestAssembly;
         [SerializeField] private AssemblyDefinitionAsset editorTestAssembly;
@@ -61,47 +63,73 @@ namespace LaundryNDishes.Core
         public bool DefaultTearDown { get => defaultTearDown; set => defaultTearDown = value; }
         public string CustomTemplatesFolder { get => customTemplatesFolder; set => customTemplatesFolder = value; }
         public TestDatabase ActiveDatabase { get => activeDatabase; private set => activeDatabase = value; }
-
-        public AssemblyDefinitionAsset MainProjectAssembly { get => mainProjectAssembly; set => mainProjectAssembly = value; }
-        public AssemblyDefinitionAsset PlayModeTestAssembly { get => playModeTestAssembly; set => playModeTestAssembly = value; }
-        public AssemblyDefinitionAsset EditorTestAssembly { get => editorTestAssembly; set => editorTestAssembly = value; }
-
-        // --- Lógica Condicional para a API Key ---
-        public string LlmApiKey
+        public string InstallationId
         {
             get
             {
-                // Variável de ambiente continua com prioridade máxima se existir
-                string envKey = Environment.GetEnvironmentVariable("UNITY_LLM_API_KEY");
-                if (!string.IsNullOrEmpty(envKey)) return envKey;
+                string id = EditorPrefs.GetString(GlobalPrefPrefix + "InstallationId", "");
 
-                if (useProjectSettingsOnly)
+                if (string.IsNullOrEmpty(id))
                 {
-                    return llmApiKey; // Lê do arquivo .asset local deste projeto
+                    id = Guid.NewGuid().ToString("N");
+                    EditorPrefs.SetString(GlobalPrefPrefix + "InstallationId", id);
                 }
-                else
-                {
-                    return EditorPrefs.GetString(GlobalPrefPrefix + "LlmApiKey", ""); // Lê do EditorPrefs Global da máquina
-                }
+
+                return id;
             }
-            set 
+        }
+        public bool TelemetryEnabled
+        {
+            get => EditorPrefs.GetBool(GlobalPrefPrefix + "TelemetryEnabled", true); // default ON
+            set => EditorPrefs.SetBool(GlobalPrefPrefix + "TelemetryEnabled", value);
+        }
+        public bool BoostrapWizardShown
+        {
+            get => EditorPrefs.GetBool(GlobalPrefPrefix + "BoostrapWizardShown", false);
+            set => EditorPrefs.SetBool(GlobalPrefPrefix + "BoostrapWizardShown", value);
+        }
+
+        public bool UseAssemblyDef { get => useAssemblyDef; set => useAssemblyDef = value; }
+        public DefaultAsset TestFolderAsset
+        {
+            get => testFolderAsset;
+            set => testFolderAsset = value; 
+        }
+        public AssemblyDefinitionAsset MainProjectAssembly { get => mainProjectAssembly; set => mainProjectAssembly = value; }
+        public AssemblyDefinitionAsset PlayModeTestAssembly { get => playModeTestAssembly; set => playModeTestAssembly = value; }
+        public AssemblyDefinitionAsset EditorTestAssembly { get => editorTestAssembly; set => editorTestAssembly = value; }
+        
+        public string LlmApiKey { get => llmApiKey; set => llmApiKey = value; }
+
+        public string PlayTestDestinationFolder
+        {
+            get
             {
-                if (useProjectSettingsOnly)
+                if (useAssemblyDef)
                 {
-                    if (llmApiKey != value) llmApiKey = value;
+                    return PlayModeTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(PlayModeTestAssembly)).Replace("\\", "/") : string.Empty;
                 }
-                else
-                {
-                    if (EditorPrefs.GetString(GlobalPrefPrefix + "LlmApiKey", "") != value)
-                    {
-                        EditorPrefs.SetString(GlobalPrefPrefix + "LlmApiKey", value);
-                    }
-                }
+               
+                // No modo Zero Setup, usa a própria pasta raiz selecionada pelo usuário
+                return AssetDatabase.GetAssetPath(TestFolderAsset);
+                
             }
         }
 
-        public string PlayTestDestinationFolder => PlayModeTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(PlayModeTestAssembly)) : string.Empty;
-        public string EditorTestScriptsFolder => EditorTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(EditorTestAssembly)) : string.Empty;
+        public string EditorTestScriptsFolder
+        {
+            get
+            {
+                if (useAssemblyDef)
+                {
+                    return EditorTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(EditorTestAssembly)).Replace("\\", "/") : string.Empty;
+                }
+                
+                string rootPath = AssetDatabase.GetAssetPath(TestFolderAsset);
+                return Path.Combine(rootPath, "Editor").Replace("\\", "/");
+                
+            }
+        }
 
         // --- Ciclo de Vida Condicional ---
         private void OnEnable()
@@ -114,6 +142,7 @@ namespace LaundryNDishes.Core
                 {
                     LoadFromEditorPrefs();
                 }
+                LoadFromEnvironmentVariables();
                 isInitialized = true;
                 Save(); 
             }
@@ -124,6 +153,7 @@ namespace LaundryNDishes.Core
         /// </summary>
         private void LoadFromEditorPrefs()
         {
+            llmApiKey = EditorPrefs.GetString(GlobalPrefPrefix + "LlmApiKey", llmApiKey);
             providerType = (LLMProviderType)EditorPrefs.GetInt(GlobalPrefPrefix + "ProviderType", (int)providerType);
             llmServerUrl = EditorPrefs.GetString(GlobalPrefPrefix + "LlmServerUrl", llmServerUrl);
             llmModel = EditorPrefs.GetString(GlobalPrefPrefix + "LlmModel", llmModel);
@@ -137,8 +167,63 @@ namespace LaundryNDishes.Core
             maxAttempts = EditorPrefs.GetInt(GlobalPrefPrefix + "MaxAttempts", maxAttempts);
             showAllLLmComm = EditorPrefs.GetBool(GlobalPrefPrefix + "ShowAllLLmComm", showAllLLmComm);
             defaultTearDown = EditorPrefs.GetBool(GlobalPrefPrefix + "DefaultTearDown", defaultTearDown);
+        }
+        
+        /// <summary>
+        /// Verifica a flag LnD_use_env e injeta as variáveis do sistema se disponíveis.
+        /// </summary>
+        private void LoadFromEnvironmentVariables()
+        {
+            // Verifica o "master switch" na variável de ambiente do Sistema Operacional
+            string useEnvStr = Environment.GetEnvironmentVariable("LnD_use_env");
             
-            // Conforme solicitado: customTemplatesFolder, assemblies e useProjectSettingsOnly NÃO são tocados aqui.
+            // Se não estiver definida ou for "false", ignora o carregamento por ambiente
+            if (string.IsNullOrEmpty(useEnvStr) || useEnvStr.ToLower() == "false" || useEnvStr == "0")
+            {
+                return;
+            }
+            
+            
+            llmApiKey = Environment.GetEnvironmentVariable("LlmApiKey") ?? llmApiKey;
+            llmServerUrl = Environment.GetEnvironmentVariable("LlmServerUrl") ?? llmServerUrl;
+            llmModel = Environment.GetEnvironmentVariable("LlmModel") ?? llmModel;
+            llamaCppPath = Environment.GetEnvironmentVariable("LlamaCppPath") ?? llamaCppPath;
+            ggufModelFile = Environment.GetEnvironmentVariable("GgufModelFile") ?? ggufModelFile;
+            onnxModelPath = Environment.GetEnvironmentVariable("OnnxModelPath") ?? onnxModelPath;
+            tokenizerPath = Environment.GetEnvironmentVariable("TokenizerPath") ?? tokenizerPath;
+
+            // Tratamento para o Enum (ProviderType)
+            string envProvider = Environment.GetEnvironmentVariable("ProviderType");
+            if (!string.IsNullOrEmpty(envProvider) && Enum.TryParse(envProvider, true, out LLMProviderType parsedProvider))
+            {
+                providerType = parsedProvider;
+            }
+
+            // Tratamento para floats e inteiros
+            string envTemp = Environment.GetEnvironmentVariable("Temperature");
+            if (!string.IsNullOrEmpty(envTemp) && float.TryParse(envTemp, out float parsedTemp))
+                temperature = parsedTemp;
+
+            string envMaxTokens = Environment.GetEnvironmentVariable("MaxTokens");
+            if (!string.IsNullOrEmpty(envMaxTokens) && int.TryParse(envMaxTokens, out int parsedTokens))
+                maxTokens = parsedTokens;
+
+            string envMaxCorr = Environment.GetEnvironmentVariable("MaxCorrections");
+            if (!string.IsNullOrEmpty(envMaxCorr) && int.TryParse(envMaxCorr, out int parsedCorr))
+                maxCorrections = parsedCorr;
+
+            string envMaxAtt = Environment.GetEnvironmentVariable("MaxAttempts");
+            if (!string.IsNullOrEmpty(envMaxAtt) && int.TryParse(envMaxAtt, out int parsedAtt))
+                maxAttempts = parsedAtt;
+
+            // Tratamento para booleanos
+            string envShowComm = Environment.GetEnvironmentVariable("ShowAllLLmComm");
+            if (!string.IsNullOrEmpty(envShowComm) && bool.TryParse(envShowComm, out bool parsedShowComm))
+                showAllLLmComm = parsedShowComm;
+
+            string envTearDown = Environment.GetEnvironmentVariable("DefaultTearDown");
+            if (!string.IsNullOrEmpty(envTearDown) && bool.TryParse(envTearDown, out bool parsedTearDown))
+                defaultTearDown = parsedTearDown;
         }
 
         /// <summary>
@@ -149,6 +234,7 @@ namespace LaundryNDishes.Core
             if (!useProjectSettingsOnly)
             {
                 // Sincroniza e atualiza o perfil GLOBAL no EditorPrefs da máquina
+                EditorPrefs.SetString(GlobalPrefPrefix + "LlmApiKey", llmApiKey);
                 EditorPrefs.SetInt(GlobalPrefPrefix + "ProviderType", (int)providerType);
                 EditorPrefs.SetString(GlobalPrefPrefix + "LlmServerUrl", llmServerUrl);
                 EditorPrefs.SetString(GlobalPrefPrefix + "LlmModel", llmModel);
