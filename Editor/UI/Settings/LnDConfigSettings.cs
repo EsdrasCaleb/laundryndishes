@@ -155,41 +155,22 @@ namespace LaundryNDishes.UI
             EditorGUILayout.Space(25);
             EditorGUILayout.LabelField("Test & Assembly Configuration", EditorStyles.boldLabel);
             
-            config.UseAssemblyDef = EditorGUILayout.Toggle("Use Assembly Definitions", config.UseAssemblyDef);
-            EditorGUILayout.Space(5);
+            EditorGUILayout.HelpBox("Drag or Select the Assembly Definition (.asmdef) files from your project here.\n", MessageType.Info);
 
-            if (config.UseAssemblyDef)
-            {
-                EditorGUILayout.HelpBox("Drag or Select the Assembly Definition (.asmdef) files from your project here.\n", MessageType.Info);
-
-                config.MainProjectAssembly = EditorGUILayout.ObjectField("Project Assembly (Runtime)", config.MainProjectAssembly, typeof(UnityEditorInternal.AssemblyDefinitionAsset), false) as UnityEditorInternal.AssemblyDefinitionAsset;
-                config.PlayModeTestAssembly = EditorGUILayout.ObjectField("Play Mode Tests Assembly", config.PlayModeTestAssembly, typeof(UnityEditorInternal.AssemblyDefinitionAsset), false) as UnityEditorInternal.AssemblyDefinitionAsset;
-                config.EditorTestAssembly = EditorGUILayout.ObjectField("Editor Tests Assembly", config.EditorTestAssembly, typeof(UnityEditorInternal.AssemblyDefinitionAsset), false) as UnityEditorInternal.AssemblyDefinitionAsset;
-            }
-            else
-            {
-                EditorGUILayout.HelpBox("Choose the root folder where the automatically generated Editor tests will be saved.\n", MessageType.Info);
-                
-                config.TestFolderAsset = EditorGUILayout.ObjectField(
-                    "Test Folder", 
-                    config.TestFolderAsset, 
-                    typeof(DefaultAsset), 
-                    false
-                ) as DefaultAsset;
-                
-                if (config.TestFolderAsset != null)
-                {
-                    string path = AssetDatabase.GetAssetPath(config.TestFolderAsset);
-                    if (!AssetDatabase.IsValidFolder(path))
-                    {
-                        EditorGUILayout.HelpBox("Warning: The selected object is not a valid folder! Please select a folder.", MessageType.Error);
-                    }
-                }
-            }
+            config.MainProjectAssembly = EditorGUILayout.ObjectField("Project Assembly (Runtime)", config.MainProjectAssembly, typeof(UnityEditorInternal.AssemblyDefinitionAsset), false) as UnityEditorInternal.AssemblyDefinitionAsset;
+            config.PlayModeTestAssembly = EditorGUILayout.ObjectField("Play Mode Tests Assembly", config.PlayModeTestAssembly, typeof(UnityEditorInternal.AssemblyDefinitionAsset), false) as UnityEditorInternal.AssemblyDefinitionAsset;
+            config.EditorTestAssembly = EditorGUILayout.ObjectField("Editor Tests Assembly", config.EditorTestAssembly, typeof(UnityEditorInternal.AssemblyDefinitionAsset), false) as UnityEditorInternal.AssemblyDefinitionAsset;
+           
 
             EditorGUILayout.Space(10);
             EditorGUILayout.LabelField(new GUIContent("Custom Templates Folder (Optional)", "Leave blank to use the plugin's default templates."));
-            config.CustomTemplatesFolder = EditorGUILayout.TextField(" ", config.CustomTemplatesFolder);
+       
+            config.CustomTemplatesFolder = EditorGUILayout.ObjectField(
+                "Template Folder", 
+                config.CustomTemplatesFolder, 
+                typeof(DefaultAsset), 
+                false
+            ) as DefaultAsset;
 
             if (EditorGUI.EndChangeCheck())
             {

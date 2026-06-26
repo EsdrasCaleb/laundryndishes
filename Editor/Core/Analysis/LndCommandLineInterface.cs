@@ -170,65 +170,48 @@ namespace LaundryNDishes.Core
                     if (scriptType == null) continue; // Pode ser uma interface ou enum
                     bool isTestScript = false;
 
-                    if (config.UseAssemblyDef)
-                    {
-                        // MODO PRO: Filtragem por nome de Assembly (.asmdef)
-                        string scriptAssemblyFile = CompilationPipeline.GetAssemblyNameFromScriptPath(assetPath);
-                        bool isPlayModeTest = config.PlayModeTestAssembly != null && scriptAssemblyFile == config.PlayModeTestAssembly.name + ".dll";
-                        bool isEditModeTest = config.EditorTestAssembly != null && scriptAssemblyFile == config.EditorTestAssembly.name + ".dll";
+                    
+                    // MODO PRO: Filtragem por nome de Assembly (.asmdef)
+                    string scriptAssemblyFile = CompilationPipeline.GetAssemblyNameFromScriptPath(assetPath);
+                    bool isPlayModeTest = config.PlayModeTestAssembly != null && scriptAssemblyFile == config.PlayModeTestAssembly.name + ".dll";
+                    bool isEditModeTest = config.EditorTestAssembly != null && scriptAssemblyFile == config.EditorTestAssembly.name + ".dll";
 
-                        if (isPlayModeTest || isEditModeTest)
+                    if (isPlayModeTest || isEditModeTest)
+                    {
+                        isTestScript = true;
+                        Debug.Log($"[LnD CLI] Pulando {script.name} - É um script de teste (Verificação por Assembly).");
+                    }
+
+                    // Bônus de Segurança antigo (pelo caminho das pastas dos asmdefs)
+                    if (!isTestScript)
+                    {
+                        if (config.PlayModeTestAssembly != null)
                         {
-                            isTestScript = true;
-                            Debug.Log($"[LnD CLI] Pulando {script.name} - É um script de teste (Verificação por Assembly).");
+                            string playModePath = AssetDatabase.GetAssetPath(config.PlayModeTestAssembly);
+                            if (!string.IsNullOrEmpty(playModePath))
+                            {
+                                string playModeDir = Path.GetDirectoryName(playModePath).Replace("\\", "/");
+                                if (assetPath.StartsWith(playModeDir)) isTestScript = true;
+                            }
                         }
 
-                        // Bônus de Segurança antigo (pelo caminho das pastas dos asmdefs)
-                        if (!isTestScript)
+                        if (config.EditorTestAssembly != null && !isTestScript)
                         {
-                            if (config.PlayModeTestAssembly != null)
+                            string editorPath = AssetDatabase.GetAssetPath(config.EditorTestAssembly);
+                            if (!string.IsNullOrEmpty(editorPath))
                             {
-                                string playModePath = AssetDatabase.GetAssetPath(config.PlayModeTestAssembly);
-                                if (!string.IsNullOrEmpty(playModePath))
-                                {
-                                    string playModeDir = Path.GetDirectoryName(playModePath).Replace("\\", "/");
-                                    if (assetPath.StartsWith(playModeDir)) isTestScript = true;
-                                }
+                                string editorDir = Path.GetDirectoryName(editorPath).Replace("\\", "/");
+                                if (assetPath.StartsWith(editorDir)) isTestScript = true;
                             }
-
-                            if (config.EditorTestAssembly != null && !isTestScript)
-                            {
-                                string editorPath = AssetDatabase.GetAssetPath(config.EditorTestAssembly);
-                                if (!string.IsNullOrEmpty(editorPath))
-                                {
-                                    string editorDir = Path.GetDirectoryName(editorPath).Replace("\\", "/");
-                                    if (assetPath.StartsWith(editorDir)) isTestScript = true;
-                                }
-                            }
-                            
-                            if (isTestScript)
-                            {
-                                Debug.Log($"[LnD CLI] Pulando {script.name} - Script está dentro do diretório do Assembly de testes.");
-                            }
+                        }
+                        
+                        if (isTestScript)
+                        {
+                            Debug.Log($"[LnD CLI] Pulando {script.name} - Script está dentro do diretório do Assembly de testes.");
                         }
                     }
-                    else
-                    {
-                        // MODO ZERO SETUP: Filtragem pela pasta selecionada no TestFolderAsset
-                        if (config.TestFolderAsset != null)
-                        {
-                            string testFolderPath = AssetDatabase.GetAssetPath(config.TestFolderAsset);
-                            if (!string.IsNullOrEmpty(testFolderPath))
-                            {
-                                // Se o script analisado começar com o caminho da pasta de testes, ele é um teste!
-                                if (assetPath.StartsWith(testFolderPath, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    isTestScript = true;
-                                    Debug.Log($"[LnD CLI] Pulando {script.name} - Script está dentro da pasta de testes global ({testFolderPath}).");
-                                }
-                            }
-                        }
-                    }
+                    
+                   
 
                     // Se a checagem (seja por Asmdef ou Pasta) acusou que é um teste, pula o script
                     if (isTestScript) continue;
