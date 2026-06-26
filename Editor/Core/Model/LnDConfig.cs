@@ -78,7 +78,7 @@ namespace LaundryNDishes.Core
         }
         public bool TelemetryEnabled
         {
-            get => EditorPrefs.GetBool(GlobalPrefPrefix + "TelemetryEnabled", true); // default ON
+            get => EditorPrefs.GetBool(GlobalPrefPrefix + "TelemetryEnabled", true);
             set => EditorPrefs.SetBool(GlobalPrefPrefix + "TelemetryEnabled", value);
         }
         public bool BoostrapWizardShown

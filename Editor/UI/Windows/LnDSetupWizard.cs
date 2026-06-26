@@ -91,11 +91,6 @@ namespace LaundryNDishes.UI
             {
                 bool isCurrent = ((int)currentStep == i);
                 
-                // Regra 2: Bloqueia as outras abas se a escolha de telemetria ainda não foi confirmada
-                bool isTabEnabled = LnDConfig.instance.BoostrapWizardShown || i == 0;
-
-                EditorGUI.BeginDisabledGroup(!isTabEnabled);
-                
                 Color originalColor = GUI.backgroundColor;
                 if (isCurrent) 
                 {
@@ -109,7 +104,6 @@ namespace LaundryNDishes.UI
                 }
                 
                 GUI.backgroundColor = originalColor;
-                EditorGUI.EndDisabledGroup();
             }
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
@@ -150,7 +144,6 @@ namespace LaundryNDishes.UI
                 if (check.changed)
                 {
                     config.TelemetryEnabled = newIndex==0;
-                    config.BoostrapWizardShown = true;
                     config.Save(); // Garante que a mudança persiste no projeto
                 }
             }
@@ -462,6 +455,7 @@ namespace LaundryNDishes.UI
             {
                 if (GUILayout.Button("Finish Setup", GUILayout.Width(130), GUILayout.Height(30)))
                 {
+                    config.BoostrapWizardShown = true;
                     config.Save();
                     Close();
                 }
