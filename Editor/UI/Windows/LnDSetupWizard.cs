@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
@@ -15,7 +17,6 @@ namespace LaundryNDishes.UI
         private SetupStep currentStep = SetupStep.WelcomeTerms;
 
         // UI Control flags
-        private string[] foundDbGuids;
         private bool isDownloadingDependencies = false;
         private LnDDownloader lndDownloader;
 
@@ -30,10 +31,11 @@ namespace LaundryNDishes.UI
 
         private void OnEnable()
         {
-            foundDbGuids = AssetDatabase.FindAssets("t:TestDatabase");
+            LnDConfig config = LnDConfig.instance;
+
             
             // Regra 2: Se já foi configurado/selecionado antes, pula direto para a segunda aba (FoldersAssemblies)
-            if (LnDConfig.instance.TelemetryEnabled)
+            if (config.TelemetryEnabled && config.BoostrapWizardShown)
             {
                 currentStep = SetupStep.FoldersAssemblies;
             }
@@ -104,7 +106,6 @@ namespace LaundryNDishes.UI
                 if (GUILayout.Button(tabNames[i], GUILayout.Height(28)))
                 {
                     currentStep = (SetupStep)i;
-                    if (currentStep == SetupStep.DatabaseConfig) foundDbGuids = AssetDatabase.FindAssets("t:TestDatabase");
                 }
                 
                 GUI.backgroundColor = originalColor;
@@ -185,61 +186,25 @@ namespace LaundryNDishes.UI
             var config = LnDConfig.instance;
 
             EditorGUILayout.LabelField("Test Architecture Setup", EditorStyles.boldLabel);
-            config.UseAssemblyDef = EditorGUILayout.Toggle("Use Assembly Definitions (.asmdef)", config.UseAssemblyDef);
+
+            EditorGUILayout.HelpBox("Advanced Mode: Link your project's specific tracking assemblies.", MessageType.Info);
+            config.MainProjectAssembly = EditorGUILayout.ObjectField("Project Assembly (Runtime)", config.MainProjectAssembly, typeof(AssemblyDefinitionAsset), false) as AssemblyDefinitionAsset;
+            config.PlayModeTestAssembly = EditorGUILayout.ObjectField("Play Mode Tests Assembly", config.PlayModeTestAssembly, typeof(AssemblyDefinitionAsset), false) as AssemblyDefinitionAsset;
+            config.EditorTestAssembly = EditorGUILayout.ObjectField("Editor Tests Assembly", config.EditorTestAssembly, typeof(AssemblyDefinitionAsset), false) as AssemblyDefinitionAsset;
+
             EditorGUILayout.Space(10);
-
-            if (config.UseAssemblyDef)
+            
+            // Regra 3: Desabilita o botão se ambas as assemblies de teste já estiverem preenchidas
+            bool assembliesFilled = (config.PlayModeTestAssembly != null && config.EditorTestAssembly != null);
+            
+            EditorGUI.BeginDisabledGroup(assembliesFilled);
+            if (GUILayout.Button("Auto-Create Missing Test Assemblies", GUILayout.Height(25)))
             {
-                EditorGUILayout.HelpBox("Advanced Mode: Link your project's specific tracking assemblies.", MessageType.Info);
-                config.MainProjectAssembly = EditorGUILayout.ObjectField("Project Assembly (Runtime)", config.MainProjectAssembly, typeof(AssemblyDefinitionAsset), false) as AssemblyDefinitionAsset;
-                config.PlayModeTestAssembly = EditorGUILayout.ObjectField("Play Mode Tests Assembly", config.PlayModeTestAssembly, typeof(AssemblyDefinitionAsset), false) as AssemblyDefinitionAsset;
-                config.EditorTestAssembly = EditorGUILayout.ObjectField("Editor Tests Assembly", config.EditorTestAssembly, typeof(AssemblyDefinitionAsset), false) as AssemblyDefinitionAsset;
-
-                EditorGUILayout.Space(10);
-                
-                // Regra 3: Desabilita o botão se ambas as assemblies de teste já estiverem preenchidas
-                bool assembliesFilled = (config.PlayModeTestAssembly != null && config.EditorTestAssembly != null);
-                
-                EditorGUI.BeginDisabledGroup(assembliesFilled);
-                if (GUILayout.Button("Auto-Create Missing Test Assemblies", GUILayout.Height(25)))
-                {
-                    AutoCreateMissingAssemblies(config);
-                }
-                EditorGUI.EndDisabledGroup();
+                AutoCreateMissingAssemblies(config);
             }
-            else
-            {
-                EditorGUILayout.HelpBox("Zero Setup Mode: Tests will be generated inside the global folder below.", MessageType.Info);
-                
-                // Regra 4: Substituído o seletor genérico por um seletor de arquivos de sistema (File/Folder Browser)
-                EditorGUILayout.BeginHorizontal();
-                string currentPath = config.TestFolderAsset != null ? AssetDatabase.GetAssetPath(config.TestFolderAsset) : "No Folder Selected";
-                EditorGUILayout.TextField("Root Test Folder Path", currentPath);
-                
-                if (GUILayout.Button("Browse...", GUILayout.Width(70)))
-                {
-                    string selectedPath = EditorUtility.OpenFolderPanel("Select Root Test Folder", "Assets", "");
-                    if (!string.IsNullOrEmpty(selectedPath))
-                    {
-                        // Converte o caminho absoluto em caminho relativo interno do projeto Unity
-                        if (selectedPath.StartsWith(Application.dataPath))
-                        {
-                            string relativePath = "Assets" + selectedPath.Substring(Application.dataPath.Length);
-                            var folderAsset = AssetDatabase.LoadAssetAtPath<DefaultAsset>(relativePath);
-                            if (folderAsset != null)
-                            {
-                                config.TestFolderAsset = folderAsset;
-                                config.Save();
-                            }
-                        }
-                        else
-                        {
-                            EditorUtility.DisplayDialog("Invalid Folder", "Please select a folder inside your Unity Project's Assets directory.", "OK");
-                        }
-                    }
-                }
-                EditorGUILayout.EndHorizontal();
-            }
+            EditorGUI.EndDisabledGroup();
+            
+            
         }
 
         private void DrawDatabaseStep()
@@ -272,7 +237,30 @@ namespace LaundryNDishes.UI
             }
             else
             {
-                EditorGUILayout.HelpBox($"Ready! Active tracking assigned to asset: '{config.ActiveDatabase.name}'", MessageType.Info);
+                string guid = AssetDatabase.FindAssets("t:TestDatabase").FirstOrDefault();
+                
+                if (!string.IsNullOrEmpty(guid))
+                {
+                    AssociateAvaibleDatabase(config);
+                }
+            }
+        }
+        
+        
+        private void AssociateAvaibleDatabase(LnDConfig config)
+        {
+            string guid = AssetDatabase.FindAssets("t:TestDatabase").FirstOrDefault();
+                            
+            if (!string.IsNullOrEmpty(guid))
+            {
+                // 2. Converte o GUID no caminho do arquivo (ex: "Assets/...')
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                
+                // 3. Carrega o asset original usando o tipo correto
+                var testDb = AssetDatabase.LoadAssetAtPath<LaundryNDishes.Core.TestDatabase>(path);
+                
+                // 4. Passa o objeto correto para o método
+                config.SetActiveDatabase(testDb);
             }
         }
 
@@ -447,7 +435,6 @@ namespace LaundryNDishes.UI
             EditorGUILayout.Space(5);
             EditorGUILayout.LabelField($"• Provider Engine: {LnDConfig.instance.ProviderType}");
             EditorGUILayout.LabelField($"• Model Target: {LnDConfig.instance.LlmModel}");
-            EditorGUILayout.LabelField($"• Isolation Strategy: {(LnDConfig.instance.UseAssemblyDef ? "Assembly Definition" : "Zero Setup (Global Workspace)")}");
             EditorGUILayout.LabelField($"• Tracking Database: {(LnDConfig.instance.ActiveDatabase != null ? LnDConfig.instance.ActiveDatabase.name : "Unassigned")}");
             EditorGUILayout.EndVertical();
         }
@@ -490,7 +477,6 @@ namespace LaundryNDishes.UI
                 if (GUILayout.Button("Next", GUILayout.Width(130), GUILayout.Height(30)))
                 {
                     currentStep++;
-                    if (currentStep == SetupStep.DatabaseConfig) foundDbGuids = AssetDatabase.FindAssets("t:TestDatabase");
                 }
                 EditorGUI.EndDisabledGroup();
             }
@@ -508,32 +494,20 @@ namespace LaundryNDishes.UI
         private void ExecuteQuickSetup()
         {
             var config = LnDConfig.instance;
-            
-            config.UseAssemblyDef = false;
-            
-            string rootPath = "Assets";
-            if (config.TestFolderAsset != null)
-            {
-                rootPath = AssetDatabase.GetAssetPath(config.TestFolderAsset);
-            }
-            else
-            {
-                string standardFolder = "Assets/LnDTests";
-                if (!AssetDatabase.IsValidFolder(standardFolder)) AssetDatabase.CreateFolder("Assets", "LnDTests");
-                rootPath = standardFolder;
-            }
 
-            string dbPath = Path.Combine(rootPath, "TestDatabase.asset").Replace("\\", "/");
-            if (AssetDatabase.LoadAssetAtPath<TestDatabase>(dbPath) == null)
+
+            AutoCreateMissingAssemblies(config);
+            
+
+            string guid = AssetDatabase.FindAssets("t:TestDatabase").FirstOrDefault();
+                
+            if (string.IsNullOrEmpty(guid))
             {
-                var newDb = ScriptableObject.CreateInstance<TestDatabase>();
-                AssetDatabase.CreateAsset(newDb, dbPath);
-                AssetDatabase.SaveAssets();
-                config.SetActiveDatabase(newDb);
+                CreateAndAssignNewDatabase(config);
             }
             else
             {
-                config.SetActiveDatabase(AssetDatabase.LoadAssetAtPath<TestDatabase>(dbPath));
+                AssociateAvaibleDatabase(config);
             }
 
             config.ProviderType = LLMProviderType.OpenAIRestServer;
@@ -558,35 +532,111 @@ namespace LaundryNDishes.UI
             // Seta o DB na instância da config e salva.
             config.SetActiveDatabase(newDb);
             config.Save();
-            foundDbGuids = AssetDatabase.FindAssets("t:TestDatabase");
             Repaint();
+            AssociateAvaibleDatabase(config);
         }
         
         private void AutoCreateMissingAssemblies(LnDConfig config)
         {
-            string playPath = config.PlayTestDestinationFolder;
-            string editPath = config.EditorTestScriptsFolder;
+            // 1. Garante ou define os caminhos das pastas de teste padrão
+            string playPath = string.IsNullOrEmpty(config.PlayTestDestinationFolder) ? "Assets/LnDTests" : config.PlayTestDestinationFolder;
+            string editPath = string.IsNullOrEmpty(config.EditorTestScriptsFolder) ? playPath+"/Editor" : config.EditorTestScriptsFolder;
 
-            // Get the name of the main project assembly if it is assigned
+            if (!Directory.Exists(playPath)) Directory.CreateDirectory(playPath);
+            if (!Directory.Exists(editPath)) Directory.CreateDirectory(editPath);
+
+            // 2. Resolve o Assembly principal do Jogo
             string mainAsmName = "";
             if (config.MainProjectAssembly != null)
             {
                 mainAsmName = config.MainProjectAssembly.name; 
             }
+            else
+            {
+                string rawProjectName = PlayerSettings.productName;
 
-            if (!string.IsNullOrEmpty(playPath) && !Directory.Exists(playPath))
-            {
-                Directory.CreateDirectory(playPath);
-                CreateNewTestAsmdef(playPath, false, mainAsmName);
+                // // Limpa o nome removendo espaços e caracteres especiais para garantir um nome de assembly válido
+                string baseAsmName = System.Text.RegularExpressions.Regex.Replace(rawProjectName, @"[^a-zA-Z0-9_]", "");
+                if (string.IsNullOrEmpty(baseAsmName))
+                {
+                    baseAsmName = "GameMain";
+                }
+                CreateUniqueGameAssembly(config,baseAsmName);
             }
-            if (!string.IsNullOrEmpty(editPath) && !Directory.Exists(editPath))
-            {
-                Directory.CreateDirectory(editPath);
-                CreateNewTestAsmdef(editPath, true, mainAsmName);
-            }
+
+            // 3. Cria os asmdefs de teste apontando para o assembly do jogo
+            CreateNewTestAsmdef(playPath, false, mainAsmName);
+            CreateNewTestAsmdef(editPath, true, mainAsmName);
+
             AssetDatabase.Refresh();
         }
+        
+        private string CreateUniqueGameAssembly(LnDConfig config, string baseAsmName="GameMain")
+        {
+            // 1. Resgata os nomes dos assemblies de teste direto das configurações salvos no Unity
+            string playAsmName = config.PlayModeTestAssembly != null ? config.PlayModeTestAssembly.name : "";
+            string editAsmName = config.EditorTestAssembly != null ? config.EditorTestAssembly.name : "";
 
+            // Coleta TODOS os assemblies existentes e registrados no ecossistema da Unity
+            var allAsmGuids = AssetDatabase.FindAssets("t:AssemblyDefinitionAsset");
+            HashSet<string> existingAsmNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            List<string> referencesList = new List<string>();
+
+            foreach (var guid in allAsmGuids)
+            {
+                string asmPath = AssetDatabase.GUIDToAssetPath(guid);
+                string asmName = Path.GetFileNameWithoutExtension(asmPath);
+                
+                if (!string.IsNullOrEmpty(asmName))
+                {
+                    // Guarda o nome interno do Assembly para a validação de duplicatas logo abaixo
+                    existingAsmNames.Add(asmName);
+                    
+                    // CHECAGEM DINÂMICA: Ignora os assemblies de teste configurados para evitar referência circular
+                    if ((!string.IsNullOrEmpty(playAsmName) && asmName.Equals(playAsmName, StringComparison.OrdinalIgnoreCase)) ||
+                        (!string.IsNullOrEmpty(editAsmName) && asmName.Equals(editAsmName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        continue; 
+                    }
+
+                    // Se for um assembly de terceiros/plugins válido, adiciona como referência do jogo
+                    referencesList.Add($"\"{asmName}\"");
+                }
+            }
+
+            // 2. VALIDAÇÃO DE DUPLICIDADE (O que você pontuou):
+            // O loop começa testando o próprio 'baseAsmName' enviado. Se ele já existir nas pastas (File.Exists) 
+            // OU se o nome interno dele já estiver registrado na Unity (existingAsmNames.Contains), ele aplica o N+1.
+            string uniqueName = baseAsmName;
+            string rootAsmPath = $"Assets/{uniqueName}.asmdef";
+            int counter = 1;
+
+            while (File.Exists(rootAsmPath) || existingAsmNames.Contains(uniqueName))
+            {
+                uniqueName = $"{baseAsmName}{counter}";
+                rootAsmPath = $"Assets/{uniqueName}.asmdef";
+                counter++;
+            }
+
+            // 3. Monta o JSON final do Assembly principal
+            string gameReferencesJson = referencesList.Count > 0 ? string.Join(",\n        ", referencesList) : "";
+            
+            string rootAsmContent = $@"{{
+            ""name"": ""{uniqueName}"",
+            ""references"": [
+                {gameReferencesJson}
+            ],
+            ""includePlatforms"": [],
+            ""excludePlatforms"": []
+        }}";
+
+            // 4. Cria o arquivo físico na raiz do projeto
+            File.WriteAllText(rootAsmPath, rootAsmContent);
+
+            return uniqueName;
+        }
+
+        
         private void CreateNewTestAsmdef(string folderPath, bool isEditor, string mainAsmName)
         {
             string baseName = Path.GetFileName(folderPath);

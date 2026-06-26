@@ -22,7 +22,25 @@ PluginImporter:
     Editor:
       enabled: 1
       settings:
+        CPU: AnyCPU
         DefaultValueInitialized: true
+        OS: AnyOS
+    Linux64:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+    OSXUniversal:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+    Win:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+    Win64:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
     WindowsStoreApps:
       enabled: 0
       settings:

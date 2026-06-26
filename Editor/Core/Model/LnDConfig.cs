@@ -33,12 +33,10 @@ namespace LaundryNDishes.Core
         [SerializeField] private int maxTokens = 2048;
         
         // Estes campos abaixo SEMPRE ficam restritos apenas ao ProjectSettings (nunca vão para o EditorPrefs)
-        [SerializeField] private bool useAssemblyDef = true;
-        [SerializeField] private DefaultAsset testFolderAsset;
         [SerializeField] private AssemblyDefinitionAsset mainProjectAssembly;
         [SerializeField] private AssemblyDefinitionAsset playModeTestAssembly;
         [SerializeField] private AssemblyDefinitionAsset editorTestAssembly;
-        [SerializeField] private string customTemplatesFolder = string.Empty;
+        [SerializeField] private DefaultAsset customTemplatesFolder;
         
         [SerializeField] private TestDatabase activeDatabase;
         [SerializeField] private int maxCorrections = 5;
@@ -61,7 +59,7 @@ namespace LaundryNDishes.Core
         public int MaxAttempts { get => maxAttempts; set => maxAttempts = value; }
         public bool ShowAllLLmComm { get => showAllLLmComm; set => showAllLLmComm = value; }
         public bool DefaultTearDown { get => defaultTearDown; set => defaultTearDown = value; }
-        public string CustomTemplatesFolder { get => customTemplatesFolder; set => customTemplatesFolder = value; }
+        public DefaultAsset CustomTemplatesFolder { get => customTemplatesFolder; set => customTemplatesFolder = value; }
         public TestDatabase ActiveDatabase { get => activeDatabase; private set => activeDatabase = value; }
         public string InstallationId
         {
@@ -88,13 +86,7 @@ namespace LaundryNDishes.Core
             get => EditorPrefs.GetBool(GlobalPrefPrefix + "BoostrapWizardShown", false);
             set => EditorPrefs.SetBool(GlobalPrefPrefix + "BoostrapWizardShown", value);
         }
-
-        public bool UseAssemblyDef { get => useAssemblyDef; set => useAssemblyDef = value; }
-        public DefaultAsset TestFolderAsset
-        {
-            get => testFolderAsset;
-            set => testFolderAsset = value; 
-        }
+       
         public AssemblyDefinitionAsset MainProjectAssembly { get => mainProjectAssembly; set => mainProjectAssembly = value; }
         public AssemblyDefinitionAsset PlayModeTestAssembly { get => playModeTestAssembly; set => playModeTestAssembly = value; }
         public AssemblyDefinitionAsset EditorTestAssembly { get => editorTestAssembly; set => editorTestAssembly = value; }
@@ -105,14 +97,7 @@ namespace LaundryNDishes.Core
         {
             get
             {
-                if (useAssemblyDef)
-                {
-                    return PlayModeTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(PlayModeTestAssembly)).Replace("\\", "/") : string.Empty;
-                }
-               
-                // No modo Zero Setup, usa a própria pasta raiz selecionada pelo usuário
-                return AssetDatabase.GetAssetPath(TestFolderAsset);
-                
+                return PlayModeTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(PlayModeTestAssembly)).Replace("\\", "/") : string.Empty;
             }
         }
 
@@ -120,14 +105,7 @@ namespace LaundryNDishes.Core
         {
             get
             {
-                if (useAssemblyDef)
-                {
-                    return EditorTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(EditorTestAssembly)).Replace("\\", "/") : string.Empty;
-                }
-                
-                string rootPath = AssetDatabase.GetAssetPath(TestFolderAsset);
-                return Path.Combine(rootPath, "Editor").Replace("\\", "/");
-                
+                return EditorTestAssembly != null ? Path.GetDirectoryName(AssetDatabase.GetAssetPath(EditorTestAssembly)).Replace("\\", "/") : string.Empty;
             }
         }
 
