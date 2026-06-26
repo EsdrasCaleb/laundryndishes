@@ -67,36 +67,11 @@ namespace LaundryNDishes.Core
                 }
 
                 
-                if (config.UseAssemblyDef)
-                {
-                    AddAssemblyAndItsReferences(config.MainProjectAssembly);
-                    var testAssemblyTarget = isEditorTest ? config.EditorTestAssembly : config.PlayModeTestAssembly;
-                    AddAssemblyAndItsReferences(testAssemblyTarget);
-                }
-                else
-                {
-                    var mainProjectAsm = allAssemblies.FirstOrDefault(a => a.name.Equals("Assembly-CSharp", StringComparison.OrdinalIgnoreCase));
-                    var editorProjectAsm = allAssemblies.FirstOrDefault(a => a.name.Equals("Assembly-CSharp-Editor", StringComparison.OrdinalIgnoreCase));
-
-                    if (mainProjectAsm != null && File.Exists(mainProjectAsm.outputPath))
-                    {
-                        referencesPaths.Add(mainProjectAsm.outputPath);
-                        foreach (var r in mainProjectAsm.compiledAssemblyReferences) 
-                        {
-                            if (File.Exists(r)) referencesPaths.Add(r);
-                        }
-                    }
-
-                    if (isEditorTest && editorProjectAsm != null && File.Exists(editorProjectAsm.outputPath))
-                    {
-                        referencesPaths.Add(editorProjectAsm.outputPath);
-                        foreach (var r in editorProjectAsm.compiledAssemblyReferences)
-                        {
-                            if (File.Exists(r)) referencesPaths.Add(r);
-                        }
-                    }
-                    referencesPaths.RemoveWhere(string.IsNullOrEmpty);
-                }
+                
+                AddAssemblyAndItsReferences(config.MainProjectAssembly);
+                var testAssemblyTarget = isEditorTest ? config.EditorTestAssembly : config.PlayModeTestAssembly;
+                AddAssemblyAndItsReferences(testAssemblyTarget);
+               
 
                 // B) A MÁGICA DA FORÇA BRUTA: Varre o domínio da aplicação.
                 // Isso pega o NUnit, o Unity Test Framework, o Core do C#, e todas as pacotes escondidos.

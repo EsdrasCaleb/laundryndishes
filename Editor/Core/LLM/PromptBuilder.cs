@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using LaundryNDishes.Core;
 using Scriban;
 using Scriban.Runtime;
+using UnityEditor;
 using UnityEngine;
 
 namespace LaundryNDishes.Core
@@ -16,7 +17,15 @@ namespace LaundryNDishes.Core
 
         public PromptBuilder()
         {
-            _customTemplatesPath = LnDConfig.instance.CustomTemplatesFolder;
+            string templatesPath = "";
+
+            if (LnDConfig.instance.CustomTemplatesFolder != null)
+            {
+                // 1. Converte o Asset de volta para uma string de caminho relativo (ex: "Assets/SuaPasta")
+                templatesPath = AssetDatabase.GetAssetPath(LnDConfig.instance.CustomTemplatesFolder);
+            }
+            
+
             string scriptPath = GetCurrentFilePath();
             string coreModelPath = Path.GetDirectoryName(scriptPath);
             string editorPath = Path.GetDirectoryName(Path.GetDirectoryName(coreModelPath));
