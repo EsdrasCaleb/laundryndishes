@@ -19,6 +19,7 @@ namespace LaundryNDishes.UI
         // UI Control flags
         private bool isDownloadingDependencies = false;
         private LnDDownloader lndDownloader;
+        private bool decisionMade = false;
 
         [MenuItem("Window/Laundry & Dishes/Setup Wizard")]
         public static void ShowWindow()
@@ -33,7 +34,7 @@ namespace LaundryNDishes.UI
         {
             LnDConfig config = LnDConfig.instance;
 
-            
+            decisionMade = config.BoostrapWizardShown;
             // Regra 2: Se já foi configurado/selecionado antes, pula direto para a segunda aba (FoldersAssemblies)
             if (config.TelemetryEnabled && config.BoostrapWizardShown)
             {
@@ -97,12 +98,12 @@ namespace LaundryNDishes.UI
                     // Destaca visualmente a aba ativa
                     GUI.backgroundColor = new Color(0.35f, 0.55f, 0.8f); 
                 }
-
+                EditorGUI.BeginDisabledGroup(!decisionMade);
                 if (GUILayout.Button(tabNames[i], GUILayout.Height(28)))
                 {
                     currentStep = (SetupStep)i;
                 }
-                
+                EditorGUI.EndDisabledGroup();
                 GUI.backgroundColor = originalColor;
             }
             EditorGUILayout.EndHorizontal();
@@ -117,13 +118,15 @@ namespace LaundryNDishes.UI
 
             EditorGUILayout.HelpBox(
                 "Laundry & Dishes is being evaluated as part of an academic research study.\n\n" +
-                "Anonymous telemetry helps us understand how the plugin is used in real-world scenarios.\n\n" +
+                "Participation is entirely voluntary. You can decline or withdraw your consent at any time via settings, without any penalty or loss of plugin functionality.\n\n" +
+                "Anonymous telemetry is collected strictly for research purposes to understand real-world usage, in compliance with GDPR and LGPD.\n\n" +
                 "Data collected:\n" +
                 "• Unity version | Plugin version\n" +
                 "• Feature usage (Test Generation / CLI)\n" +
-                "• Test Execution outcome\n" +
-                "• Anonymous identifiers for the User\n\n" +
-                "Source code, prompts, personal data or file paths are NEVER collected.",
+                "• Test Execution outcomes\n" +
+                "• Randomized, anonymous user identifiers\n\n" +
+                "Source code, prompts, personal identifiable information (PII), or file paths are NEVER collected.\n\n" +
+                "If you have questions or wish to exercise your data rights, please contact esdrascaleb@gmail.com or the Ethics Committee at inaep@saude.gov.br.",
                 MessageType.Info
             );
 
@@ -143,6 +146,7 @@ namespace LaundryNDishes.UI
                 // 2. Se o usuário mudou a seleção no menu, aplicamos e salvamos imediatamente
                 if (check.changed)
                 {
+                    decisionMade = true;
                     config.TelemetryEnabled = newIndex==0;
                     config.Save(); // Garante que a mudança persiste no projeto
                 }
@@ -155,23 +159,23 @@ namespace LaundryNDishes.UI
             
 
             // Fluxo Condicional de Setup Rápido (Apenas se aceitar telemetria)
-            if (config.BoostrapWizardShown)
-            {
-                EditorGUILayout.Space(15);
-                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.LabelField("⚡ Quick Setup (Recommended)", EditorStyles.boldLabel);
-                EditorGUILayout.LabelField("Set up your entire testing environment automatically:\n" +
-                                           "• Disables Assembly Definitions (Zero Setup Mode)\n" +
-                                           "• Creates a default Test Database at your root folder\n" +
-                                           "• Prefills cloud configurations for Codestral (Mistral AI)", EditorStyles.wordWrappedLabel);
-                
-                EditorGUILayout.Space(10);
-                if (GUILayout.Button("Execute Quick Setup", GUILayout.Height(35)))
-                {
-                    ExecuteQuickSetup();
-                }
-                EditorGUILayout.EndVertical();
-            }
+            // if (decisionMade)
+            // {
+            //     EditorGUILayout.Space(15);
+            //     EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            //     EditorGUILayout.LabelField("⚡ Quick Setup (Recommended)", EditorStyles.boldLabel);
+            //     EditorGUILayout.LabelField("Set up your entire testing environment automatically:\n" +
+            //                                "• Disables Assembly Definitions (Zero Setup Mode)\n" +
+            //                                "• Creates a default Test Database at your root folder\n" +
+            //                                "• Prefills cloud configurations for Codestral (Mistral AI)", EditorStyles.wordWrappedLabel);
+            //     
+            //     EditorGUILayout.Space(10);
+            //     if (GUILayout.Button("Execute Quick Setup", GUILayout.Height(35)))
+            //     {
+            //         ExecuteQuickSetup();
+            //     }
+            //     EditorGUILayout.EndVertical();
+            // }
         }
 
         private void DrawFoldersAssembliesStep()
@@ -442,12 +446,13 @@ namespace LaundryNDishes.UI
             EditorGUILayout.BeginHorizontal();
 
             // Botão Back (Oculto se for na aba inicial)
-            EditorGUI.BeginDisabledGroup(currentStep == SetupStep.WelcomeTerms);
-            if (GUILayout.Button("Back", GUILayout.Width(100), GUILayout.Height(30)))
+            if (currentStep != SetupStep.Complete)
             {
-                currentStep--;
+                if (GUILayout.Button("Back", GUILayout.Width(100), GUILayout.Height(30)))
+                {
+                    currentStep--;
+                }
             }
-            EditorGUI.EndDisabledGroup();
 
             GUILayout.FlexibleSpace();
 
@@ -463,15 +468,19 @@ namespace LaundryNDishes.UI
             else
             {
                 // Impede avançar se estiver baixando dependências locais
-                bool canAdvance = true;
+                bool canAdvance = decisionMade;
                 if (currentStep == SetupStep.ModelConfig && lndDownloader.IsDownloadingAny) canAdvance = false;
-                if (!config && currentStep == SetupStep.WelcomeTerms) canAdvance = false;
 
                 EditorGUI.BeginDisabledGroup(!canAdvance);
+                if (GUILayout.Button("⚡ Quick Setup", GUILayout.Height(35)))
+                {
+                    ExecuteQuickSetup();
+                }
                 if (GUILayout.Button("Next", GUILayout.Width(130), GUILayout.Height(30)))
                 {
                     currentStep++;
                 }
+                
                 EditorGUI.EndDisabledGroup();
             }
 
