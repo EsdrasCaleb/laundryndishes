@@ -18,6 +18,7 @@ namespace LaundryNDishes
         private static void RunStartupChecks()
         {
             // Se o consentimento ou a configuração inicial não foi mostrada, abre o Wizard
+            //LnDConfig.instance.BoostrapWizardShown = false;
             if (!LnDConfig.instance.BoostrapWizardShown)
             {
                 EditorApplication.delayCall += () =>

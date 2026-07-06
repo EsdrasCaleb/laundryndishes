@@ -17,7 +17,6 @@ namespace LaundryNDishes.UI
         private SetupStep currentStep = SetupStep.WelcomeTerms;
 
         // UI Control flags
-        private bool isDownloadingDependencies = false;
         private LnDDownloader lndDownloader;
         private bool decisionMade = false;
 
@@ -114,68 +113,124 @@ namespace LaundryNDishes.UI
         {
             var config = LnDConfig.instance;
 
-            EditorGUILayout.LabelField("Telemetry & Research Data", EditorStyles.boldLabel);
+            // Configuração de estilos para o texto ficar idêntico ao solicitado e responsivo
+            GUIStyle headerStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontSize = 12
+            };
 
-            EditorGUILayout.HelpBox(
-                "Laundry & Dishes is being evaluated as part of an academic research study.\n\n" +
-                "Participation is entirely voluntary. You can decline or withdraw your consent at any time via settings, without any penalty or loss of plugin functionality.\n\n" +
-                "Anonymous telemetry is collected strictly for research purposes to understand real-world usage, in compliance with GDPR and LGPD.\n\n" +
-                "Data collected:\n" +
-                "• Unity version | Plugin version\n" +
-                "• Feature usage (Test Generation / CLI)\n" +
-                "• Test Execution outcomes\n" +
-                "• Randomized, anonymous user identifiers\n\n" +
-                "Source code, prompts, personal identifiable information (PII), or file paths are NEVER collected.\n\n" +
-                "If you have questions or wish to exercise your data rights, please contact esdrascaleb@gmail.com or the Ethics Committee at inaep@saude.gov.br.",
-                MessageType.Info
-            );
+            GUIStyle textStyle = new GUIStyle(EditorStyles.wordWrappedLabel)
+            {
+                fontSize = 11,
+                richText = true // Permite usar tags se quiser formatar algo no futuro
+            };
 
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.Space(10);
 
-            // Regra 2: Mudança para Checkbox para deixar claro se está ativo ou não
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            // Borda superior e Título
+            EditorGUILayout.LabelField("========================================================================", headerStyle);
+            EditorGUILayout.LabelField("LAUNDRY & DISHES - ACADEMIC RESEARCH STUDY", headerStyle);
+            EditorGUILayout.LabelField("========================================================================", headerStyle);
             EditorGUILayout.Space(5);
-            string[] togleOptions = new string[] { "Yes", "No" };
-            using (var check = new EditorGUI.ChangeCheckScope())
+
+            // Texto de consentimento acadêmico formatado
+            string consentText =
+                "You are invited to participate in the academic research study\n" +
+                "\"Evaluation of the Impact of a Language Model-Based Tool for Automated Test Generation in Unity Projects\",\n" +
+                "conducted by Esdras Caleb Oliveira Silva from the Federal University of Rio Grande do Norte (UFRN), Brazil.\n\n" +
+
+                "We collect anonymous usage telemetry to understand how automated test generation behaves in real-world Unity software projects.\n\n" +
+
+                "DATA COLLECTED:\n" +
+                "• Unity Engine version & Plugin version\n" +
+                "• Feature usage logs (Editor actions / CLI execution)\n" +
+                "• Test execution outcomes & metadata\n" +
+                "• Anonymized unique installation identifier (UUID)\n\n" +
+
+                "WE NEVER COLLECT:\n" +
+                "Your source code, LLM prompts, project names, absolute file paths, or any personal data.\n\n" +
+
+                "YOUR PRIVACY & RIGHTS:\n" +
+                "1. Participation is entirely voluntary (Opt-In). Telemetry is DISABLED by default.\n" +
+                "2. You can disable telemetry at any time in the settings menu. Doing so will trigger deletion of all historical telemetry associated with your installation ID.\n" +
+                "3. This research complies with LGPD and GDPR standards.\n\n" +
+
+                "RESEARCH INFORMATION:\n" +
+                "• Study: Evaluation of the Impact of a Language Model-Based Tool for Automated Test Generation in Unity Projects\n" +
+                "• CAAE: XXXXXXXXXXXX.XX.XXXX.X.XXXX \n\n" +
+
+                "ETHICS COMMITTEE CONTACT (CEP/UFRN):\n" +
+                "• Email: cepufrn@propesq.ufrn.br\n" +
+                "• WhatsApp: +55 (84) 99193-6266\n\n" +
+
+                "Do you agree to activate anonymous telemetry for this study?";
+
+            EditorGUILayout.LabelField(consentText, textStyle);
+            EditorGUILayout.Space(15);
+
+            // Área dos Botões de Decisão
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+
+            Color originalBgColor = GUI.backgroundColor;
+
+            // --- 1. BOTÃO: I AGREE / OPT-IN ---
+            // Só colore se a decisão já foi tomada E for positiva
+            if (decisionMade && config.TelemetryEnabled)
             {
-                // Fazemos o cast do enum atual para int (já que seus valores são 0 e 1)
-                int currentEnumIndex = config.TelemetryEnabled?0:1;
-
-                int newIndex = EditorGUILayout.Popup("Send Anonymous Data?", currentEnumIndex, togleOptions);
-        
-                // 2. Se o usuário mudou a seleção no menu, aplicamos e salvamos imediatamente
-                if (check.changed)
-                {
-                    decisionMade = true;
-                    config.TelemetryEnabled = newIndex==0;
-                    config.Save(); // Garante que a mudança persiste no projeto
-                }
+                GUI.backgroundColor = new Color(0.35f, 0.75f, 0.35f); // Verde sutil (funciona bem no Light e Dark skin)
             }
-            
+            else
+            {
+                GUI.backgroundColor = originalBgColor;
+            }
+
+            if (GUILayout.Button("I AGREE / OPT-IN", GUILayout.Width(160), GUILayout.Height(30)))
+            {
+                decisionMade = true;
+                config.TelemetryEnabled = true;
+                config.Save();
+                
+                // Função para avançar o passo do Wizard automaticamente
+                currentStep = SetupStep.FoldersAssemblies;
+            }
+
+            EditorGUILayout.Space(20);
+
+            // --- 2. BOTÃO: I DECLINE ---
+            // Só colore se a decisão já foi tomada E for negativa
+            if (decisionMade && !config.TelemetryEnabled)
+            {
+                GUI.backgroundColor = new Color(0.8f, 0.35f, 0.35f); // Vermelho sutil
+            }
+            else
+            {
+                GUI.backgroundColor = originalBgColor;
+            }
+
+            if (GUILayout.Button("I DECLINE", GUILayout.Width(160), GUILayout.Height(30)))
+            {
+                decisionMade = true;
+                config.TelemetryEnabled = false;
+                config.Save();
+                
+                // Função para avançar o passo do Wizard automaticamente
+                currentStep = SetupStep.FoldersAssemblies;
+            }
+
+            // Restaura a cor padrão da GUI para não pintar o resto da janela
+            GUI.backgroundColor = originalBgColor;
+
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(10);
+            EditorGUILayout.LabelField("========================================================================", headerStyle);
             EditorGUILayout.Space(5);
+            
             EditorGUILayout.EndVertical();
-
-            EditorGUILayout.Space(5);
-            
-
-            // Fluxo Condicional de Setup Rápido (Apenas se aceitar telemetria)
-            // if (decisionMade)
-            // {
-            //     EditorGUILayout.Space(15);
-            //     EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            //     EditorGUILayout.LabelField("⚡ Quick Setup (Recommended)", EditorStyles.boldLabel);
-            //     EditorGUILayout.LabelField("Set up your entire testing environment automatically:\n" +
-            //                                "• Disables Assembly Definitions (Zero Setup Mode)\n" +
-            //                                "• Creates a default Test Database at your root folder\n" +
-            //                                "• Prefills cloud configurations for Codestral (Mistral AI)", EditorStyles.wordWrappedLabel);
-            //     
-            //     EditorGUILayout.Space(10);
-            //     if (GUILayout.Button("Execute Quick Setup", GUILayout.Height(35)))
-            //     {
-            //         ExecuteQuickSetup();
-            //     }
-            //     EditorGUILayout.EndVertical();
-            // }
         }
 
         private void DrawFoldersAssembliesStep()
