@@ -47,12 +47,37 @@ namespace LaundryNDishes.UI
         private CancellationTokenSource _cts;
         private readonly List<string> _generationLogs = new List<string>();
         private Vector2 _logScrollPosition;
-
-        public static void OpenWindow(MonoScript script)
+        
+        public static void OpenWindow(List<MonoScript> targetScripts)
         {
             var window = GetWindow<TestGeneratorHubWindow>("Test Generator Hub");
-            window.SetTargetScript(script);
+    
+            // Configura a janela para carregar e listar todos os scripts recebidos na interface
+            window.InitializeWithScripts(targetScripts); 
             window.Show();
+        }
+
+        /// <summary>
+        /// Inicializa a janela preenchendo as abas com a lista de scripts recebida.
+        /// </summary>
+        public void InitializeWithScripts(List<MonoScript> targetScripts)
+        {
+            _tabs.Clear();
+            _currentTabIdx = 0;
+
+            if (targetScripts != null)
+            {
+                foreach (var script in targetScripts)
+                {
+                    // Evita adicionar scripts nulos ou duplicados na interface
+                    if (script != null && !_tabs.Any(t => t.TargetScript == script))
+                    {
+                        AddTabForScript(script);
+                    }
+                }
+            }
+
+            UpdateTitle();
         }
 
         /// <summary>
@@ -70,7 +95,7 @@ namespace LaundryNDishes.UI
         }
 
         /// <summary>
-        /// PREPARAÇÃO FUTURA: Passa um GameObject/Prefab e a janela monta abas para todos os scripts nele contidos
+        /// Passa um GameObject/Prefab e a janela monta abas para todos os scripts nele contidos
         /// </summary>
         public void SetTargetGameObject(GameObject go)
         {
@@ -78,7 +103,7 @@ namespace LaundryNDishes.UI
             _currentTabIdx = 0;
             if (go != null)
             {
-                var components = go.GetComponents<MonoBehaviour>();
+                var components = go.GetComponentsInChildren<MonoBehaviour>(true);
                 foreach (var comp in components)
                 {
                     if (comp == null) continue;
