@@ -13,7 +13,6 @@ namespace LaundryNDishes.Core
     public class LnDDownloader
     {
         private const string MODEL_URL = "https://huggingface.co/jica98/qwen3.5-4B-super-coder/resolve/main/qwen3.5-4B-super-coder.Q4_0.gguf?download=true";
-        private const string LLAMA_VERSION_FOLDER = "llama_cpp_b8816";
 
         // Controle de Cancelamento Global da Instância
         private CancellationTokenSource _cts;
@@ -37,7 +36,6 @@ namespace LaundryNDishes.Core
         }
 
         public string GetExpectedModelPath() => Path.Combine(GetGlobalInstallDirectory(), "active_local_model.gguf").Replace("\\", "/");
-        public string GetExpectedLlamaFolder() => Path.Combine(GetGlobalInstallDirectory(), LLAMA_VERSION_FOLDER).Replace("\\", "/");
 
         public bool HasValidModel()
         {
@@ -45,20 +43,7 @@ namespace LaundryNDishes.Core
             return File.Exists(path) && new FileInfo(path).Length > 0;
         }
 
-        public bool HasValidLlamaCpp()
-        {
-            string folder = GetExpectedLlamaFolder();
-            if (!Directory.Exists(folder)) return false;
-
-            string binaryExtension = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : "";
-            string[] possibleNames = { $"llama-cli{binaryExtension}", $"llama-server{binaryExtension}", $"main{binaryExtension}" };
-
-            foreach (var name in possibleNames)
-            {
-                if (Directory.GetFiles(folder, name, SearchOption.AllDirectories).Length > 0) return true;
-            }
-            return false;
-        }
+       
 
         #region Inicialização e Cancelamento
 
@@ -100,19 +85,6 @@ namespace LaundryNDishes.Core
                 NotifyChange();
             }
             catch (Exception e) { Debug.LogError($"[LnD Downloader] Delete model failed: {e.Message}"); }
-        }
-
-        public void DeleteLlamaCpp()
-        {
-            try
-            {
-                string folder = GetExpectedLlamaFolder();
-                if (Directory.Exists(folder)) Directory.Delete(folder, true);
-                LnDConfig.instance.LlamaCppPath = "";
-                LnDConfig.instance.Save();
-                NotifyChange();
-            }
-            catch (Exception e) { Debug.LogError($"[LnD Downloader] Delete Llama folder failed: {e.Message}"); }
         }
 
         #endregion
@@ -158,70 +130,6 @@ namespace LaundryNDishes.Core
             }
         }
 
-        public async Task<string> DownloadLlamaCppAsync()
-        {
-            if (IsDownloadingLlama) return LnDConfig.instance.LlamaCppPath;
-
-            IsDownloadingLlama = true;
-            LlamaProgress = 0f;
-            NotifyChange();
-
-            string installDir = GetGlobalInstallDirectory();
-            string llamaFolder = GetExpectedLlamaFolder();
-            string zipPath = Path.Combine(installDir, "llama_temp.zip");
-            string downloadUrl = GetLlamaUrlForCurrentOS();
-            CancellationToken token = _cts?.Token ?? CancellationToken.None;
-
-            try
-            {
-                var progressReporter = new Progress<float>(val =>
-                {
-                    LlamaProgress = val;
-                    StatusMessage = val < 1f ? $"Downloading Llama.cpp... {(val * 100f):F0}%" : "Extracting framework...";
-                    NotifyChange();
-                });
-
-                if (!Directory.Exists(llamaFolder))
-                {
-                    await DownloadFileAsync(downloadUrl, zipPath, progressReporter, token);
-                    
-                    // Se foi cancelado logo após baixar o zip mas antes de extrair
-                    token.ThrowIfCancellationRequested();
-
-                    Directory.CreateDirectory(llamaFolder);
-                    ZipFile.ExtractToDirectory(zipPath, llamaFolder);
-                    if (File.Exists(zipPath)) File.Delete(zipPath);
-                }
-
-                LlamaProgress = 1f;
-                NotifyChange();
-
-                string binaryExtension = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : "";
-                string[] possibleNames = { $"llama-cli{binaryExtension}", $"llama-server{binaryExtension}", $"main{binaryExtension}" };
-
-                foreach (var name in possibleNames)
-                {
-                    string[] files = Directory.GetFiles(llamaFolder, name, SearchOption.AllDirectories);
-                    if (files.Length > 0) return files[0].Replace("\\", "/");
-                }
-
-                return llamaFolder.Replace("\\", "/");
-            }
-            catch (OperationCanceledException)
-            {
-                LlamaProgress = 0f;
-                StatusMessage = "Download cancelled.";
-                if (File.Exists(zipPath)) File.Delete(zipPath);
-                if (Directory.Exists(llamaFolder)) Directory.Delete(llamaFolder, true);
-                throw;
-            }
-            finally
-            {
-                IsDownloadingLlama = false;
-                NotifyChange();
-            }
-        }
-
         private async Task DownloadFileAsync(string url, string destPath, IProgress<float> progress, CancellationToken token)
         {
             using var client = new HttpClient();
@@ -255,25 +163,6 @@ namespace LaundryNDishes.Core
         }
 
         private void NotifyChange() => OnProgressUpdated?.Invoke();
-
-        private static string GetLlamaUrlForCurrentOS()
-        {
-            string gpuName = SystemInfo.graphicsDeviceName.ToLower();
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                if (gpuName.Contains("nvidia")) return "https://github.com/ggml-org/llama.cpp/releases/download/b8816/llama-b8816-bin-win-cuda-cu12.2.0-x64.zip";
-                if (gpuName.Contains("amd") || gpuName.Contains("radeon")) return "https://github.com/ggml-org/llama.cpp/releases/download/b8816/llama-b8816-bin-win-vulkan-x64.zip";
-                return "https://github.com/ggml-org/llama.cpp/releases/download/b8816/llama-b8816-bin-win-avx2-x64.zip";
-            }
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            {
-                return RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? 
-                    "https://github.com/ggml-org/llama.cpp/releases/download/b8816/llama-b8816-bin-macos-arm64.tar.gz" : 
-                    "https://github.com/ggml-org/llama.cpp/releases/download/b8816/llama-b8816-bin-macos-x64.tar.gz";
-            }
-            return RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ?  "https://github.com/ggml-org/llama.cpp/releases/download/b8816/llama-b8816-bin-ubuntu-arm64.tar.gz"
-            : "https://github.com/ggml-org/llama.cpp/releases/download/b8816/llama-b8816-bin-ubuntu-x64.tar.gz";
-        }
 
         #endregion
     }

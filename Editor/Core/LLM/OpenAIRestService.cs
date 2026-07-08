@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using LaundryNDishes.Core;
 using UnityEngine;
@@ -25,12 +26,13 @@ namespace LaundryNDishes.Core
         private static readonly HttpClient HttpClient = new HttpClient();
 
         // O único método público, que segue o contrato da interface.
-        public async Task<LLMResponse> GetResponseAsync(LLMRequestData requestData, bool debug = false)
+        public async Task<LLMResponse> GetResponseAsync(LLMRequestData requestData, bool debug = false, CancellationToken cancellationToken = default)
         {
             var config = requestData.Config;
             try
             {
-
+                // 0. Aborta imediatamente se o usuário já clicou em cancelar antes de começar
+                cancellationToken.ThrowIfCancellationRequested();
 
                 // 1. Construir o objeto da requisição de forma segura.
                 var requestBody = new ChatRequest
@@ -43,20 +45,25 @@ namespace LaundryNDishes.Core
 
                 // 2. Serializar para JSON usando a ferramenta da Unity.
                 string jsonRequestBody = JsonUtility.ToJson(requestBody);
-
                 var content = new StringContent(jsonRequestBody, Encoding.UTF8, "application/json");
+                
                 if (debug)
                 {
                     Debug.Log($"Request: \n{jsonRequestBody}");
                 }
+
                 // 3. Configurar e enviar a requisição usando um HttpRequestMessage para mais controle.
                 using (var requestMessage = new HttpRequestMessage(HttpMethod.Post, config.LlmServerUrl))
                 {
-                    // A chave da API é adicionada por requisição, o que é mais seguro.
                     requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.LlmApiKey);
                     requestMessage.Content = content;
 
-                    HttpResponseMessage response = await HttpClient.SendAsync(requestMessage);
+                    // AQUI ESTÁ A MÁGICA: Passamos o token para o HttpClient abater a conexão de rede se cancelado!
+                    HttpResponseMessage response = await HttpClient.SendAsync(requestMessage, cancellationToken);
+                    
+                    // Verifica novamente após a volta da rede
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     string responseData = await response.Content.ReadAsStringAsync();
 
                     if (response.IsSuccessStatusCode)
@@ -81,6 +88,12 @@ namespace LaundryNDishes.Core
                         return new LLMResponse { Success = false, ErrorMessage = $"API Error: {response.ReasonPhrase}" };
                     }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // Tratamento limpo sem gerar erro vermelho no console da Unity
+                Debug.LogWarning("[LnD] A requisição REST para o LLM foi cancelada pelo usuário. Conexão interrompida.");
+                return new LLMResponse { Success = false, ErrorMessage = "Geração cancelada pelo usuário." };
             }
             catch (Exception ex)
             {

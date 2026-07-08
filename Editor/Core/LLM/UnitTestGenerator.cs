@@ -324,7 +324,7 @@ namespace LaundryNDishes.Core
             var intentionRequest = new LLMRequestData { GeneratedPrompt = intentionPrompt, Config = _config };
             
             cancellationToken.ThrowIfCancellationRequested();
-            var intentionResponse = await _llmService.GetResponseAsync(intentionRequest, _config.ShowAllLLmComm);
+            var intentionResponse = await _llmService.GetResponseAsync(intentionRequest, _config.ShowAllLLmComm,cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
             if (!intentionResponse.Success)
@@ -363,7 +363,7 @@ namespace LaundryNDishes.Core
                 var testRequest = new LLMRequestData { GeneratedPrompt = testPrompt, Config = _config };
                 
                 cancellationToken.ThrowIfCancellationRequested();
-                var testResponse = await _llmService.GetResponseAsync(testRequest, _config.ShowAllLLmComm);
+                var testResponse = await _llmService.GetResponseAsync(testRequest, _config.ShowAllLLmComm,cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 
                 if (!testResponse.Success) throw new Exception("Falha ao gerar o código: " + testResponse.ErrorMessage);

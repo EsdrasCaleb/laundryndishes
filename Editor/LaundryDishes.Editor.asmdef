@@ -8,7 +8,7 @@
         "Editor"
     ],
     "excludePlatforms": [],
-    "allowUnsafeCode": false,
+    "allowUnsafeCode": true,
     "overrideReferences": true,
     "precompiledReferences": [
         "Scriban.dll",
@@ -28,7 +28,10 @@
         "System.Diagnostics.DiagnosticSource.dll",
         "Microsoft.Extensions.Primitives.dll",
         "System.Text.Encodings.Web.dll",
-        "System.IO.Pipelines.dll"
+        "System.IO.Pipelines.dll",
+        "CommunityToolkit.HighPerformance.dll",
+        "Microsoft.Extensions.AI.Abstractions.dll",
+        "System.Numerics.Tensors.dll"
     ],
     "autoReferenced": true,
     "defineConstraints": [],

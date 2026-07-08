@@ -382,7 +382,100 @@ namespace LaundryNDishes.Core
             }
         }
 
+        // <summary>
+        /// Instala o backend Llama.cpp especificado via argumento no terminal.
+        /// 
+        /// COMO USAR NO TERMINAL:
+        /// Passo 1: Passe a flag '-backend' seguida por um dos valores abaixo (case-insensitive):
+        /// 
+        /// Backends Possíveis:
+        ///   CPU        -> Para CPUs muito antigas (pré-2011) sem instruções avançadas.
+        ///   CPU_AVX    -> Para CPUs antigas (2011-2013, ex: Intel Sandy Bridge).
+        ///   CPU_AVX2   -> Padrão recomendado para 99% das CPUs modernas (AMD Ryzen / Intel moderno).
+        ///   CPU_AVX512 -> Apenas para AMD Zen 4+ (Ryzen 7000+) ou Intel Xeon/Ice Lake.
+        ///   Vulkan     -> Para GPUs AMD Radeon (Dedicas/APUs fortes) ou Intel Arc.
+        ///   CUDA11     -> Para placas NVIDIA mais antigas (Série GTX 600 a GTX 800).
+        ///   CUDA12     -> Para placas NVIDIA modernas (GTX 900, Série 10, RTX 20/30/40).
+        /// 
+        /// EXEMPLO DE COMANDO (Linux/macOS):
+        /// ./Unity -batchmode -nographics -projectPath "/caminho/do/projeto" -executeMethod LaundryNDishes.Core.LndCommandLineInterface.InstallBackendCLI -backend Vulkan -quit
+        /// 
+        /// EXEMPLO DE COMANDO (Windows):
+        /// Unity.exe -batchmode -nographics -projectPath "C:/Projeto" -executeMethod LaundryNDishes.Core.LndCommandLineInterface.InstallBackendCLI -backend CUDA12 -quit
+        /// </summary>
+        public static void InstallBackendCLI()
+        {
+            Debug.Log("[LnD CLI] Iniciando rotina de instalação de backend via linha de comando...");
 
+            try
+            {
+                // 1. Lê o argumento '-backend' passado pelo usuário na linha de comando
+                string backendArg = GetArgValue("-backend");
+
+                if (string.IsNullOrEmpty(backendArg))
+                {
+                    Debug.LogError("[LnD CLI] ERRO: Nenhum backend especificado! Você deve passar o argumento '-backend <TIPO>'. Exemplo: -backend Vulkan ou -backend CPU_AVX2");
+                    if (Application.isBatchMode) EditorApplication.Exit(1);
+                    return;
+                }
+
+                // 2. Converte a string do terminal para o Enum LlamaCppHardwareBackend ignorando maiúsculas/minúsculas
+                if (!Enum.TryParse(backendArg, true, out LlamaCppHardwareBackend targetBackend))
+                {
+                    Debug.LogError($"[LnD CLI] ERRO: O valor '{backendArg}' não é um backend válido! Valores aceitos: CPU, CPU_AVX, CPU_AVX2, CPU_AVX512, Vulkan, CUDA11, CUDA12.");
+                    if (Application.isBatchMode) EditorApplication.Exit(1);
+                    return;
+                }
+
+                Debug.Log($"[LnD CLI] Backend selecionado via argumento: {targetBackend}");
+
+                // 3. Acessa o Config do projeto
+                LnDConfig config = LnDConfig.instance;
+
+                // 4. Verifica se já está instalado para economizar tempo/banda no CI/CD
+                if (config.ActiveHardwareBackend == targetBackend && config.BoostrapWizardShown)
+                {
+                    Debug.Log($"[LnD CLI] O backend '{targetBackend}' já está configurado e atualizado neste projeto. Nenhuma ação necessária.");
+                    if (Application.isBatchMode) EditorApplication.Exit(0);
+                    return;
+                }
+
+                Debug.Log($"[LnD CLI] Iniciando o download e bootstrap do backend '{targetBackend}'...");
+
+                // 5. Executa o download de forma assíncrona com bloqueio síncrono da thread para o modo -batchmode não fechar
+                LlamaCppBackendDownloader downloader = new LlamaCppBackendDownloader();
+                downloader.StartSession();
+
+                Task downloadTask = Task.Run(async () => 
+                {
+                    await downloader.InstallBackendAsync(targetBackend);
+                });
+
+                // Trava a execução do terminal até o download ser finalizado
+                downloadTask.Wait();
+
+                if (downloader.Progress >= 1.0f)
+                {
+                    // 6. Atualiza o projeto com o novo backend e salva o .asset
+                    config.ActiveHardwareBackend = targetBackend;
+                    config.BoostrapWizardShown = true;
+                    config.Save();
+                    
+                    Debug.Log($"[LnD CLI] SUCESSO: Backend '{targetBackend}' foi baixado, instalado e configurado como ativo no projeto!");
+                    if (Application.isBatchMode) EditorApplication.Exit(0);
+                }
+                else
+                {
+                    Debug.LogError($"[LnD CLI] ERRO: Falha ao instalar o backend. Status final: {downloader.StatusMessage}");
+                    if (Application.isBatchMode) EditorApplication.Exit(1);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[LnD CLI] Exceção crítica na execução do comando CLI: {ex.Message}\n{ex.StackTrace}");
+                if (Application.isBatchMode) EditorApplication.Exit(1);
+            }
+        }
 
     }
 }

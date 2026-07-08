@@ -374,10 +374,9 @@ namespace LaundryNDishes.UI
                 
                 if (!lndDownloader.IsDownloadingAny)
                 {
-                    bool hasLlama = lndDownloader.HasValidLlamaCpp();
                     bool hasModel = lndDownloader.HasValidModel();
 
-                    if (!hasLlama || !hasModel)
+                    if (!hasModel)
                     {
                         if (GUILayout.Button("📥 Initialize Downloads via LnDDownloader", GUILayout.Height(35)))
                         {
@@ -389,15 +388,11 @@ namespace LaundryNDishes.UI
                         EditorGUILayout.HelpBox("🎉 Perfect! Valid Llama.cpp binaries and GGUF model paths detected locally.", MessageType.Info);
                     }
 
-                    if (hasLlama || hasModel)
+                    if (hasModel)
                     {
                         EditorGUILayout.Space(5);
                         EditorGUILayout.BeginHorizontal();
-                        if (hasLlama && GUILayout.Button("🗑️ Delete Llama.cpp Cache"))
-                        {
-                            if (EditorUtility.DisplayDialog("Delete Binaries", "Are you sure?", "Yes", "No")) lndDownloader.DeleteLlamaCpp();
-                        }
-                        if (hasModel && GUILayout.Button("🗑️ Delete GGUF Model Cache"))
+                        if (GUILayout.Button("🗑️ Delete GGUF Model Cache"))
                         {
                             if (EditorUtility.DisplayDialog("Delete Model", "Are you sure?", "Yes", "No")) lndDownloader.DeleteModel();
                         }
@@ -428,7 +423,6 @@ namespace LaundryNDishes.UI
 
                 EditorGUILayout.Space(10);
                 EditorGUI.BeginDisabledGroup(lndDownloader.IsDownloadingAny);
-                config.LlamaCppPath = EditorGUILayout.TextField("Llama.cpp Binary Path", config.LlamaCppPath);
                 config.GgufModelFile = EditorGUILayout.TextField("Model File Path (.gguf)", config.GgufModelFile);
                 EditorGUI.EndDisabledGroup();
             }
@@ -455,13 +449,10 @@ namespace LaundryNDishes.UI
 
             try
             {
-                Task<string> llamaTask = lndDownloader.DownloadLlamaCppAsync();
                 Task<string> modelTask = lndDownloader.DownloadModelAsync();
-
-                string finalLlamaPath = await llamaTask;
+                
                 string finalModelPath = await modelTask;
-
-                config.LlamaCppPath = finalLlamaPath;
+                
                 config.GgufModelFile = finalModelPath;
                 config.Save();
             }

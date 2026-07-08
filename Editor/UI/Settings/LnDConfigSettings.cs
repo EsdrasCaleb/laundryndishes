@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading;
 using UnityEditor;
 using UnityEngine;
@@ -14,19 +15,34 @@ namespace LaundryNDishes.UI
         // Controls the open/closed state of the shareable settings box
         private static bool _globalSettingsFoldout = true; 
 
+        // Instância estática do nosso downloader de backend
+        private static LlamaCppBackendDownloader _backendDownloader;
+
         public LnDConfigSettings(string path, SettingsScope scopes) : base(path, scopes) { }
 
         [SettingsProvider]
         public static SettingsProvider CreateSettingsProvider()
         {
             var provider = new LnDConfigSettings("Project/Laundry & Dishes", SettingsScope.Project);
-            provider.keywords = new System.Collections.Generic.HashSet<string>(new[] { "LLM", "AI", "Test", "Wizard" });
+            provider.keywords = new System.Collections.Generic.HashSet<string>(new[] { "LLM", "AI", "Test", "Wizard", "GGUF", "Llama" });
             return provider;
         }
 
         public override void OnGUI(string searchContext)
         {
             var config = LnDConfig.instance;
+            
+            // Inicializa o downloader sob demanda e escuta o progresso para repintar a UI
+            if (_backendDownloader == null)
+            {
+                _backendDownloader = new LlamaCppBackendDownloader();
+                _backendDownloader.OnProgressUpdated += () => {
+                    EditorUtility.SetDirty(config);
+                    // Força a UI de Project Settings a redesenhar em tempo real
+                    var window = EditorWindow.focusedWindow;
+                    if (window != null) window.Repaint();
+                };
+            }
             
             EditorGUILayout.Space(5);
             
@@ -118,12 +134,80 @@ namespace LaundryNDishes.UI
                         config.LlmModel = EditorGUILayout.TextField("Model Name", config.LlmModel);
                         config.LlmApiKey = EditorGUILayout.PasswordField("API Key", config.LlmApiKey);
                         break;
+                    
                     case LLMProviderType.LlamaCppDirect:
                         EditorGUILayout.HelpBox("Direct Llama.cpp execution runs locally on your machine.", MessageType.Info);
-                        GUI.enabled = false;
-                        config.LlamaCppPath = EditorGUILayout.TextField("Llama.cpp Executable Path", config.LlamaCppPath);
+                        
+                        // 1. SELEÇÃO DE HARDWARE AUTOMÁTICA
+                        EditorGUILayout.Space(5);
+                        EditorGUILayout.LabelField("Hardware Backend Setup", EditorStyles.boldLabel);
+                        
+                        
+                        // Verifica se o instalado é diferente do presente ou se nunca foi bootstrappado
+                        bool isDifferentBackend = (config.DetectedHardware != config.ActiveHardwareBackend);
+                        
+                        EditorGUILayout.Space(3);
+
+                        if (_backendDownloader.IsDownloading)
+                        {
+                            // Mostra a barra de progresso em tempo real se estiver baixando
+                            Rect progressRect = EditorGUILayout.GetControlRect(false, 20);
+                            EditorGUI.ProgressBar(progressRect, _backendDownloader.Progress, _backendDownloader.StatusMessage);
+                            
+                            GUI.backgroundColor = Color.red;
+                            if (GUILayout.Button("Cancel Download"))
+                            {
+                                _backendDownloader.Cancel();
+                            }
+                            GUI.backgroundColor = Color.white;
+                        }
+                        else
+                        {
+                            // Se o hardware correto já estiver instalado, desabilita o botão
+                            GUI.enabled = isDifferentBackend;
+                            
+                            string buttonText = isDifferentBackend ? $"Switch to {config.DetectedHardware} Backend" : "Updated";
+                                
+                            if (GUILayout.Button(buttonText, GUILayout.Height(25)))
+                            {
+                                _backendDownloader.StartSession();
+                                _ = _backendDownloader.InstallBackendAsync(config.DetectedHardware);
+                            }
+                            GUI.enabled = true; // Sempre reseta a GUI para não travar os itens de baixo!
+                        }
+                        
+                        EditorGUILayout.Space(10);
+
+                        // 2. BUSCA DO ARQUIVO GGUF DO MODELO VIA SELETOR DO SISTEMA
+                        EditorGUILayout.LabelField("Model Path Configuration", EditorStyles.boldLabel);
+                        EditorGUILayout.BeginHorizontal();
+                        
                         config.GgufModelFile = EditorGUILayout.TextField("GGUF Model File Path", config.GgufModelFile);
-                        GUI.enabled = true;
+                        
+                        if (GUILayout.Button("Browse...", GUILayout.Width(75)))
+                        {
+                            string initialDir = !string.IsNullOrEmpty(config.GgufModelFile) ? Path.GetDirectoryName(config.GgufModelFile) : "";
+                            string selectedPath = EditorUtility.OpenFilePanel("Select GGUF Model File", initialDir, "gguf");
+                            
+                            if (!string.IsNullOrEmpty(selectedPath))
+                            {
+                                config.GgufModelFile = selectedPath;
+                                GUI.FocusControl(null);
+                            }
+                        }
+                        
+                        if (!string.IsNullOrEmpty(config.GgufModelFile))
+                        {
+                            GUI.backgroundColor = new Color(1f, 0.4f, 0.4f);
+                            if (GUILayout.Button(new GUIContent("X", "Clear model path"), GUILayout.Width(25)))
+                            {
+                                config.GgufModelFile = "";
+                                GUI.FocusControl(null);
+                            }
+                            GUI.backgroundColor = Color.white;
+                        }
+                        
+                        EditorGUILayout.EndHorizontal();
                         break;
                 }
 
@@ -160,7 +244,7 @@ namespace LaundryNDishes.UI
             config.MainProjectAssembly = EditorGUILayout.ObjectField("Project Assembly (Runtime)", config.MainProjectAssembly, typeof(UnityEditorInternal.AssemblyDefinitionAsset), false) as UnityEditorInternal.AssemblyDefinitionAsset;
             config.PlayModeTestAssembly = EditorGUILayout.ObjectField("Play Mode Tests Assembly", config.PlayModeTestAssembly, typeof(UnityEditorInternal.AssemblyDefinitionAsset), false) as UnityEditorInternal.AssemblyDefinitionAsset;
             config.EditorTestAssembly = EditorGUILayout.ObjectField("Editor Tests Assembly", config.EditorTestAssembly, typeof(UnityEditorInternal.AssemblyDefinitionAsset), false) as UnityEditorInternal.AssemblyDefinitionAsset;
-           
+            
 
             EditorGUILayout.Space(10);
             EditorGUILayout.LabelField(new GUIContent("Custom Templates Folder (Optional)", "Leave blank to use the plugin's default templates."));
@@ -271,5 +355,7 @@ namespace LaundryNDishes.UI
             catch (System.Exception ex) { _connectionTestResult = $"Failed. Exception: {ex.Message}"; }
             finally { _isTestingConnection = false; }
         }
+        
+       
     }
 }

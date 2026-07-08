@@ -6,7 +6,19 @@ using UnityEngine;
 
 namespace LaundryNDishes.Core
 {
-    public enum LLMProviderType { OpenAIRestServer, LlamaCppDirect/*, UnitySentis*/ }
+    public enum LLMProviderType { OpenAIRestServer, LlamaCppDirect }
+
+    // --- NOVO ENUM DE HARDWARE ---
+    public enum LlamaCppHardwareBackend 
+    { 
+        CPU, 
+        CPU_AVX, 
+        CPU_AVX2, 
+        CPU_AVX512, 
+        Vulkan, 
+        CUDA11, 
+        CUDA12 
+    }
 
     [FilePath("ProjectSettings/LaundryNDishesSettings.asset", FilePathAttribute.Location.ProjectFolder)]
     public class LnDConfig : ScriptableSingleton<LnDConfig>
@@ -14,9 +26,11 @@ namespace LaundryNDishes.Core
         // Prefixo GLOBAL (as configurações serão compartilhadas por todos os projetos do seu computador)
         private const string GlobalPrefPrefix = "LnD_Global_";
 
+        public LlamaCppHardwareBackend DetectedHardware { get; private set; }
+        
         [SerializeField] private bool isInitialized = false;
 
-        // --- NOVA PROPRIEDADE DE ISOLAÇÃO ---
+        // --- PROPRIEDADE DE ISOLAÇÃO ---
         [SerializeField] private bool useProjectSettingsOnly = false;
 
         // Campo para salvar a API Key no arquivo .asset CASO o EditorPrefs esteja desativado
@@ -25,7 +39,6 @@ namespace LaundryNDishes.Core
         [SerializeField] private LLMProviderType providerType = LLMProviderType.OpenAIRestServer;
         [SerializeField] private string llmServerUrl = "";
         [SerializeField] private string llmModel = "";
-        [SerializeField] private string llamaCppPath = "";
         [SerializeField] private string ggufModelFile = "";
         [SerializeField] private string onnxModelPath = "";
         [SerializeField] private string tokenizerPath = "";
@@ -43,13 +56,13 @@ namespace LaundryNDishes.Core
         [SerializeField] private int maxAttempts = 5;
         [SerializeField] private bool showAllLLmComm = true;
         [SerializeField] private bool defaultTearDown = true;
+        [SerializeField] private LlamaCppHardwareBackend activeHardwareBackend = LlamaCppHardwareBackend.CPU_AVX2;
 
         // --- Propriedades Públicas ---
         public bool UseProjectSettingsOnly { get => useProjectSettingsOnly; set => useProjectSettingsOnly = value; }
         public LLMProviderType ProviderType { get => providerType; set => providerType = value; }
         public string LlmServerUrl { get => llmServerUrl; set => llmServerUrl = value; }
         public string LlmModel { get => llmModel; set => llmModel = value; }
-        public string LlamaCppPath { get => llamaCppPath; set => llamaCppPath = value; }
         public string GgufModelFile { get => ggufModelFile; set => ggufModelFile = value; }
         public string OnnxModelPath { get => onnxModelPath; set => onnxModelPath = value; }
         public string TokenizerPath { get => tokenizerPath; set => tokenizerPath = value; }
@@ -61,6 +74,25 @@ namespace LaundryNDishes.Core
         public bool DefaultTearDown { get => defaultTearDown; set => defaultTearDown = value; }
         public DefaultAsset CustomTemplatesFolder { get => customTemplatesFolder; set => customTemplatesFolder = value; }
         public TestDatabase ActiveDatabase { get => activeDatabase; private set => activeDatabase = value; }
+        /// <summary>
+        /// Define qual backend nativo do Llama.cpp está carregado na máquina atual. O padrão é CPU_AVX2.
+        /// </summary>
+        /// <summary>
+        /// Define qual backend nativo do Llama.cpp está instalado neste projeto específico.
+        /// </summary>
+        public LlamaCppHardwareBackend ActiveHardwareBackend
+        {
+            get => activeHardwareBackend;
+            set
+            {
+                if (activeHardwareBackend != value)
+                {
+                    activeHardwareBackend = value;
+                    Save(); // Salva no arquivo .asset imediatamente ao mudar
+                }
+            }
+        }
+        
         public string InstallationId
         {
             get
@@ -114,6 +146,7 @@ namespace LaundryNDishes.Core
         {
             if (!isInitialized)
             {
+                DetectedHardware = DetectBestBackend();
                 // Se for um projeto novo (arquivo .asset acabou de ser criado), ele nasce com 'useProjectSettingsOnly = false'.
                 // Então ele vai herdar automaticamente a configuração global que você já configurou em outros projetos.
                 if (!useProjectSettingsOnly)
@@ -135,7 +168,6 @@ namespace LaundryNDishes.Core
             providerType = (LLMProviderType)EditorPrefs.GetInt(GlobalPrefPrefix + "ProviderType", (int)providerType);
             llmServerUrl = EditorPrefs.GetString(GlobalPrefPrefix + "LlmServerUrl", llmServerUrl);
             llmModel = EditorPrefs.GetString(GlobalPrefPrefix + "LlmModel", llmModel);
-            llamaCppPath = EditorPrefs.GetString(GlobalPrefPrefix + "LlamaCppPath", llamaCppPath);
             ggufModelFile = EditorPrefs.GetString(GlobalPrefPrefix + "GgufModelFile", ggufModelFile);
             onnxModelPath = EditorPrefs.GetString(GlobalPrefPrefix + "OnnxModelPath", onnxModelPath);
             tokenizerPath = EditorPrefs.GetString(GlobalPrefPrefix + "TokenizerPath", tokenizerPath);
@@ -152,32 +184,26 @@ namespace LaundryNDishes.Core
         /// </summary>
         private void LoadFromEnvironmentVariables()
         {
-            // Verifica o "master switch" na variável de ambiente do Sistema Operacional
             string useEnvStr = Environment.GetEnvironmentVariable("LnD_use_env");
             
-            // Se não estiver definida ou for "false", ignora o carregamento por ambiente
             if (string.IsNullOrEmpty(useEnvStr) || useEnvStr.ToLower() == "false" || useEnvStr == "0")
             {
                 return;
             }
             
-            
             llmApiKey = Environment.GetEnvironmentVariable("LlmApiKey") ?? llmApiKey;
             llmServerUrl = Environment.GetEnvironmentVariable("LlmServerUrl") ?? llmServerUrl;
             llmModel = Environment.GetEnvironmentVariable("LlmModel") ?? llmModel;
-            llamaCppPath = Environment.GetEnvironmentVariable("LlamaCppPath") ?? llamaCppPath;
             ggufModelFile = Environment.GetEnvironmentVariable("GgufModelFile") ?? ggufModelFile;
             onnxModelPath = Environment.GetEnvironmentVariable("OnnxModelPath") ?? onnxModelPath;
             tokenizerPath = Environment.GetEnvironmentVariable("TokenizerPath") ?? tokenizerPath;
 
-            // Tratamento para o Enum (ProviderType)
             string envProvider = Environment.GetEnvironmentVariable("ProviderType");
             if (!string.IsNullOrEmpty(envProvider) && Enum.TryParse(envProvider, true, out LLMProviderType parsedProvider))
             {
                 providerType = parsedProvider;
             }
 
-            // Tratamento para floats e inteiros
             string envTemp = Environment.GetEnvironmentVariable("Temperature");
             if (!string.IsNullOrEmpty(envTemp) && float.TryParse(envTemp, out float parsedTemp))
                 temperature = parsedTemp;
@@ -194,7 +220,6 @@ namespace LaundryNDishes.Core
             if (!string.IsNullOrEmpty(envMaxAtt) && int.TryParse(envMaxAtt, out int parsedAtt))
                 maxAttempts = parsedAtt;
 
-            // Tratamento para booleanos
             string envShowComm = Environment.GetEnvironmentVariable("ShowAllLLmComm");
             if (!string.IsNullOrEmpty(envShowComm) && bool.TryParse(envShowComm, out bool parsedShowComm))
                 showAllLLmComm = parsedShowComm;
@@ -211,12 +236,10 @@ namespace LaundryNDishes.Core
         {
             if (!useProjectSettingsOnly)
             {
-                // Sincroniza e atualiza o perfil GLOBAL no EditorPrefs da máquina
                 EditorPrefs.SetString(GlobalPrefPrefix + "LlmApiKey", llmApiKey);
                 EditorPrefs.SetInt(GlobalPrefPrefix + "ProviderType", (int)providerType);
                 EditorPrefs.SetString(GlobalPrefPrefix + "LlmServerUrl", llmServerUrl);
                 EditorPrefs.SetString(GlobalPrefPrefix + "LlmModel", llmModel);
-                EditorPrefs.SetString(GlobalPrefPrefix + "LlamaCppPath", llamaCppPath);
                 EditorPrefs.SetString(GlobalPrefPrefix + "GgufModelFile", ggufModelFile);
                 EditorPrefs.SetString(GlobalPrefPrefix + "OnnxModelPath", onnxModelPath);
                 EditorPrefs.SetString(GlobalPrefPrefix + "TokenizerPath", tokenizerPath);
@@ -226,11 +249,8 @@ namespace LaundryNDishes.Core
                 EditorPrefs.SetInt(GlobalPrefPrefix + "MaxAttempts", maxAttempts);
                 EditorPrefs.SetBool(GlobalPrefPrefix + "ShowAllLLmComm", showAllLLmComm);
                 EditorPrefs.SetBool(GlobalPrefPrefix + "DefaultTearDown", defaultTearDown);
-                
-                // Nota: se mudar de 'true' para 'false', o estado atual deste projeto vira o novo padrão global.
             }
 
-            // Sempre salva localmente no arquivo ProjectSettings/LaundryNDishesSettings.asset
             EditorUtility.SetDirty(this);
             Save(true); 
         }
@@ -248,6 +268,41 @@ namespace LaundryNDishes.Core
         public void SetActiveDatabase(TestDatabase database)
         {
             activeDatabase = database;
+        }
+        
+        public LlamaCppHardwareBackend DetectBestBackend()
+        {
+            string gpuVendor = SystemInfo.graphicsDeviceVendor.ToLower();
+            string gpuName = SystemInfo.graphicsDeviceName.ToLower();
+            int vramMB = SystemInfo.graphicsMemorySize; // Memória de vídeo em MB
+
+            Debug.Log($"<color=cyan>[LnD Hardware] Analisando sistema: GPU '{SystemInfo.graphicsDeviceName}' ({SystemInfo.graphicsDeviceVendor}) com {vramMB}MB VRAM. CPU: '{SystemInfo.processorType}'</color>");
+
+            // 1. PRIORIDADE MÁXIMA: Placas NVIDIA (CUDA 12)
+            if (gpuVendor.Contains("nvidia") || gpuName.Contains("geforce") || gpuName.Contains("rtx") || gpuName.Contains("gtx") || gpuName.Contains("quadro"))
+            {
+                // Verifica se tem VRAM suficiente (ou se o driver não reportou 0 por erro de headless)
+                if (vramMB >= 2048 || vramMB == 0)
+                {
+                    Debug.Log("<color=green>[LnD Hardware] GPU NVIDIA detectada -> Selecionando CUDA12</color>");
+                    return LlamaCppHardwareBackend.CUDA12;
+                }
+            }
+
+            // 2. SEGUNDA PRIORIDADE: AMD Radeon ou Intel Arc Discrete GPUs (Vulkan)
+            if (gpuVendor.Contains("amd") || gpuVendor.Contains("ati") || gpuName.Contains("radeon") || gpuName.Contains("rx ") || gpuName.Contains("arc "))
+            {
+                if (vramMB >= 2048 || vramMB == 0)
+                {
+                    Debug.Log("<color=green>[LnD Hardware] GPU AMD/Intel dedicada detectada -> Selecionando Vulkan</color>");
+                    return LlamaCppHardwareBackend.Vulkan;
+                }
+            }
+
+            // 3. FALLBACK SEGURO DE ALTA PERFORMANCE: CPU com AVX2
+            // Praticamente todo processador gamer ou de trabalho desde 2013 suporta AVX2.
+            Debug.Log("<color=yellow>[LnD Hardware] Nenhuma GPU compatível isolada -> Selecionando CPU_AVX2</color>");
+            return LlamaCppHardwareBackend.CPU_AVX2;
         }
     }
 }
