@@ -406,7 +406,7 @@ namespace LaundryNDishes.Core
         public static void InstallBackendCLI()
         {
             Debug.Log("[LnD CLI] Iniciando rotina de instalação de backend via linha de comando...");
-
+            LlamaCppHardwareBackend targetBackend;
             try
             {
                 // 1. Lê o argumento '-backend' passado pelo usuário na linha de comando
@@ -414,17 +414,20 @@ namespace LaundryNDishes.Core
 
                 if (string.IsNullOrEmpty(backendArg))
                 {
-                    Debug.LogError("[LnD CLI] ERRO: Nenhum backend especificado! Você deve passar o argumento '-backend <TIPO>'. Exemplo: -backend Vulkan ou -backend CPU_AVX2");
-                    if (Application.isBatchMode) EditorApplication.Exit(1);
-                    return;
+                    LnDConfig.instance.UpdateBestBackend();
+                    targetBackend = LnDConfig.instance.DetectedHardware;
                 }
-
-                // 2. Converte a string do terminal para o Enum LlamaCppHardwareBackend ignorando maiúsculas/minúsculas
-                if (!Enum.TryParse(backendArg, true, out LlamaCppHardwareBackend targetBackend))
+                else
                 {
-                    Debug.LogError($"[LnD CLI] ERRO: O valor '{backendArg}' não é um backend válido! Valores aceitos: CPU, CPU_AVX, CPU_AVX2, CPU_AVX512, Vulkan, CUDA11, CUDA12.");
-                    if (Application.isBatchMode) EditorApplication.Exit(1);
-                    return;
+
+                    // 2. Converte a string do terminal para o Enum LlamaCppHardwareBackend ignorando maiúsculas/minúsculas
+                    if (!Enum.TryParse(backendArg, true, out targetBackend))
+                    {
+                        Debug.LogError(
+                            $"[LnD CLI] ERRO: O valor '{backendArg}' não é um backend válido! Valores aceitos: CPU, CPU_AVX, CPU_AVX2, CPU_AVX512, Vulkan, CUDA11, CUDA12.");
+                        if (Application.isBatchMode) EditorApplication.Exit(1);
+                        return;
+                    }
                 }
 
                 Debug.Log($"[LnD CLI] Backend selecionado via argumento: {targetBackend}");
@@ -433,7 +436,7 @@ namespace LaundryNDishes.Core
                 LnDConfig config = LnDConfig.instance;
 
                 // 4. Verifica se já está instalado para economizar tempo/banda no CI/CD
-                if (config.ActiveHardwareBackend == targetBackend && config.BoostrapWizardShown)
+                if (config.ActiveHardwareBackend == targetBackend)
                 {
                     Debug.Log($"[LnD CLI] O backend '{targetBackend}' já está configurado e atualizado neste projeto. Nenhuma ação necessária.");
                     if (Application.isBatchMode) EditorApplication.Exit(0);
@@ -458,7 +461,6 @@ namespace LaundryNDishes.Core
                 {
                     // 6. Atualiza o projeto com o novo backend e salva o .asset
                     config.ActiveHardwareBackend = targetBackend;
-                    config.BoostrapWizardShown = true;
                     config.Save();
                     
                     Debug.Log($"[LnD CLI] SUCESSO: Backend '{targetBackend}' foi baixado, instalado e configurado como ativo no projeto!");

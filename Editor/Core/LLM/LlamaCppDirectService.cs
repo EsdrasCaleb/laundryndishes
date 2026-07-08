@@ -106,7 +106,7 @@ namespace LaundryNDishes.Core
                         if (!firstTokenReceived)
                         {
                             firstTokenReceived = true;
-                            if (debug) Debug.Log("<color=green>⚡ [LnD] Primeiro token gerado! Escrevendo resposta...</color>");
+                            //if (debug) Debug.Log("<color=green>⚡ [LnD] Primeiro token gerado! Escrevendo resposta...</color>");
                         }
 
                         sb.Append(token);
@@ -116,7 +116,7 @@ namespace LaundryNDishes.Core
                             lineBuffer.Append(token);
                             if (token.Contains("\n"))
                             {
-                                Debug.Log($"<color=white>[LnD AI]: {lineBuffer.ToString().TrimEnd()}</color>");
+                                //Debug.Log($"<color=white>[LnD AI]: {lineBuffer.ToString().TrimEnd()}</color>");
                                 lineBuffer.Clear();
                             }
                         }

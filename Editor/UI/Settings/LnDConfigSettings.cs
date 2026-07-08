@@ -141,7 +141,7 @@ namespace LaundryNDishes.UI
                         // 1. SELEÇÃO DE HARDWARE AUTOMÁTICA
                         EditorGUILayout.Space(5);
                         EditorGUILayout.LabelField("Hardware Backend Setup", EditorStyles.boldLabel);
-                        
+
                         
                         // Verifica se o instalado é diferente do presente ou se nunca foi bootstrappado
                         bool isDifferentBackend = (config.DetectedHardware != config.ActiveHardwareBackend);
@@ -163,9 +163,10 @@ namespace LaundryNDishes.UI
                         }
                         else
                         {
-                            // Se o hardware correto já estiver instalado, desabilita o botão
-                            GUI.enabled = isDifferentBackend;
+                            EditorGUILayout.BeginHorizontal();
                             
+                            // A) BOTÃO PRINCIPAL (ocupa o espaço restante)
+                            GUI.enabled = isDifferentBackend;
                             string buttonText = isDifferentBackend ? $"Switch to {config.DetectedHardware} Backend" : "Updated";
                                 
                             if (GUILayout.Button(buttonText, GUILayout.Height(25)))
@@ -173,7 +174,15 @@ namespace LaundryNDishes.UI
                                 _backendDownloader.StartSession();
                                 _ = _backendDownloader.InstallBackendAsync(config.DetectedHardware);
                             }
-                            GUI.enabled = true; // Sempre reseta a GUI para não travar os itens de baixo!
+                            GUI.enabled = true; // Libera a GUI imediatamente para o próximo botão não herdar a trava!
+
+                            // B) NOVO BOTÃO: DETECT NEW HARDWARE (Menor e com largura fixa)
+                            if (GUILayout.Button("Detect New Hardware", GUILayout.Height(25), GUILayout.Width(150)))
+                            {
+                                config.UpdateBestBackend();
+                            }
+                            
+                            EditorGUILayout.EndHorizontal();
                         }
                         
                         EditorGUILayout.Space(10);

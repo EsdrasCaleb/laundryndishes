@@ -3,6 +3,7 @@ using System.IO;
 using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace LaundryNDishes.Core
 {
@@ -17,7 +18,9 @@ namespace LaundryNDishes.Core
         CPU_AVX512, 
         Vulkan, 
         CUDA11, 
-        CUDA12 
+        CUDA12,
+        MACOS,
+        ARM
     }
 
     [FilePath("ProjectSettings/LaundryNDishesSettings.asset", FilePathAttribute.Location.ProjectFolder)]
@@ -25,8 +28,6 @@ namespace LaundryNDishes.Core
     {
         // Prefixo GLOBAL (as configurações serão compartilhadas por todos os projetos do seu computador)
         private const string GlobalPrefPrefix = "LnD_Global_";
-
-        public LlamaCppHardwareBackend DetectedHardware { get; private set; }
         
         [SerializeField] private bool isInitialized = false;
 
@@ -57,6 +58,7 @@ namespace LaundryNDishes.Core
         [SerializeField] private bool showAllLLmComm = true;
         [SerializeField] private bool defaultTearDown = true;
         [SerializeField] private LlamaCppHardwareBackend activeHardwareBackend = LlamaCppHardwareBackend.CPU_AVX2;
+        [SerializeField] private LlamaCppHardwareBackend detectedHardware;
 
         // --- Propriedades Públicas ---
         public bool UseProjectSettingsOnly { get => useProjectSettingsOnly; set => useProjectSettingsOnly = value; }
@@ -93,6 +95,8 @@ namespace LaundryNDishes.Core
             }
         }
         
+        public LlamaCppHardwareBackend DetectedHardware => detectedHardware;
+
         public string InstallationId
         {
             get
@@ -146,9 +150,7 @@ namespace LaundryNDishes.Core
         {
             if (!isInitialized)
             {
-                DetectedHardware = DetectBestBackend();
-                // Se for um projeto novo (arquivo .asset acabou de ser criado), ele nasce com 'useProjectSettingsOnly = false'.
-                // Então ele vai herdar automaticamente a configuração global que você já configurou em outros projetos.
+                UpdateBestBackend();
                 if (!useProjectSettingsOnly)
                 {
                     LoadFromEditorPrefs();
@@ -270,39 +272,173 @@ namespace LaundryNDishes.Core
             activeDatabase = database;
         }
         
-        public LlamaCppHardwareBackend DetectBestBackend()
+        
+        
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        private const uint PF_AVX_INSTRUCTIONS_AVAILABLE = 19;
+        private const uint PF_AVX2_INSTRUCTIONS_AVAILABLE = 26;
+        private const uint PF_AVX512F_INSTRUCTIONS_AVAILABLE = 41;
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern bool IsProcessorFeaturePresent(uint ProcessorFeature);
+#endif
+        public void UpdateBestBackend()
         {
+            LlamaCppHardwareBackend previousDetected = detectedHardware;
+            DetectBestBackend();
+            if (previousDetected != detectedHardware)
+            {
+                Save();
+            }
+        }
+        
+        private void DetectBestBackend()
+        {
+#if UNITY_EDITOR_OSX
+            Debug.Log("<color=green>[LnD Hardware] Plataforma macOS detectada. Ignorando checagens x86/Windows/Linux -> Selecionando Metal</color>");
+            // NOTA: Se o seu Enum usar outro nome para o Mac (ex: 'Metal' ou 'Mac'), altere aqui.
+            DetectedHardware = LlamaCppHardwareBackend.MACOS; 
+            return;
+#endif
             string gpuVendor = SystemInfo.graphicsDeviceVendor.ToLower();
             string gpuName = SystemInfo.graphicsDeviceName.ToLower();
-            int vramMB = SystemInfo.graphicsMemorySize; // Memória de vídeo em MB
+            int vramMB = SystemInfo.graphicsMemorySize;
 
             Debug.Log($"<color=cyan>[LnD Hardware] Analisando sistema: GPU '{SystemInfo.graphicsDeviceName}' ({SystemInfo.graphicsDeviceVendor}) com {vramMB}MB VRAM. CPU: '{SystemInfo.processorType}'</color>");
+            
+            const int MinVramThresholdMB = 2000;
 
-            // 1. PRIORIDADE MÁXIMA: Placas NVIDIA (CUDA 12)
+            // 1. PRIORIDADE MÁXIMA: Placas NVIDIA
             if (gpuVendor.Contains("nvidia") || gpuName.Contains("geforce") || gpuName.Contains("rtx") || gpuName.Contains("gtx") || gpuName.Contains("quadro"))
             {
-                // Verifica se tem VRAM suficiente (ou se o driver não reportou 0 por erro de headless)
-                if (vramMB >= 2048 || vramMB == 0)
+                if (vramMB >= MinVramThresholdMB || vramMB == 0)
                 {
-                    Debug.Log("<color=green>[LnD Hardware] GPU NVIDIA detectada -> Selecionando CUDA12</color>");
-                    return LlamaCppHardwareBackend.CUDA12;
+                    bool isOlderNvidia = gpuName.Contains("gtx 6") ||
+                                         gpuName.Contains("gtx 7") ||
+                                         gpuName.Contains("gtx 8") ||
+                                         gpuName.Contains("quadro k") ||
+                                         gpuName.Contains("tesla k") ||
+                                         gpuName.Contains("titan z") ||
+                                         gpuName.Contains("titan black");
+
+                    if (isOlderNvidia)
+                    {
+                        Debug.Log("<color=green>[LnD Hardware] GPU NVIDIA antiga detectada -> Selecionando CUDA11</color>");
+                        detectedHardware = LlamaCppHardwareBackend.CUDA11;
+                    }
+                    else
+                    {
+                        Debug.Log("<color=green>[LnD Hardware] GPU NVIDIA detectada com VRAM suficiente -> Selecionando CUDA12</color>");
+                        detectedHardware = LlamaCppHardwareBackend.CUDA12;
+                    }
+                    return; 
                 }
             }
 
-            // 2. SEGUNDA PRIORIDADE: AMD Radeon ou Intel Arc Discrete GPUs (Vulkan)
+            // 2. SEGUNDA PRIORIDADE: AMD Radeon / Intel Arc (Vulkan)
+            // Checa se a GPU é AMD/Intel E se a Unity está ativamente rodando com suporte a Vulkan
             if (gpuVendor.Contains("amd") || gpuVendor.Contains("ati") || gpuName.Contains("radeon") || gpuName.Contains("rx ") || gpuName.Contains("arc "))
             {
-                if (vramMB >= 2048 || vramMB == 0)
+                if (vramMB >= MinVramThresholdMB || vramMB == 0)
                 {
-                    Debug.Log("<color=green>[LnD Hardware] GPU AMD/Intel dedicada detectada -> Selecionando Vulkan</color>");
-                    return LlamaCppHardwareBackend.Vulkan;
+                    Debug.Log("<color=green>[LnD Hardware] GPU AMD/Intel dedicada detectada -> Selecionando Vulkan de forma independente</color>");
+                    detectedHardware = LlamaCppHardwareBackend.Vulkan;
+                    return; 
                 }
             }
+            
+            var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
+            bool isArmArchitecture = arch == System.Runtime.InteropServices.Architecture.Arm || 
+                                     arch == System.Runtime.InteropServices.Architecture.Arm64;
 
-            // 3. FALLBACK SEGURO DE ALTA PERFORMANCE: CPU com AVX2
-            // Praticamente todo processador gamer ou de trabalho desde 2013 suporta AVX2.
-            Debug.Log("<color=yellow>[LnD Hardware] Nenhuma GPU compatível isolada -> Selecionando CPU_AVX2</color>");
-            return LlamaCppHardwareBackend.CPU_AVX2;
+            if (isArmArchitecture)
+            {
+                Debug.Log("<color=yellow>[LnD Hardware] Arquitetura ARM detectada (Sem suporte a AVX). Pulando checagens x86 e selecionando CPU básico.</color>");
+                detectedHardware = LlamaCppHardwareBackend.CPU;
+                return;
+            }
+
+#if UNITY_EDITOR_WIN
+            try
+            {
+                if (IsProcessorFeaturePresent(PF_AVX512F_INSTRUCTIONS_AVAILABLE))
+                {
+                    Debug.Log("<color=green>[LnD Hardware] Windows confirmou via Hardware: AVX-512 Suportado</color>");
+                    detectedHardware = LlamaCppHardwareBackend.CPU_AVX512;
+                    return;
+                }
+                if (IsProcessorFeaturePresent(PF_AVX2_INSTRUCTIONS_AVAILABLE))
+                {
+                    Debug.Log("<color=green>[LnD Hardware] Windows confirmou via Hardware: AVX2 Suportado</color>");
+                    detectedHardware = LlamaCppHardwareBackend.CPU_AVX2;
+                    return;
+                }
+                if (IsProcessorFeaturePresent(PF_AVX_INSTRUCTIONS_AVAILABLE))
+                {
+                    Debug.Log("<color=green>[LnD Hardware] Windows confirmou via Hardware: AVX Antigo Suportado</color>");
+                    detectedHardware = LlamaCppHardwareBackend.CPU_AVX;
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[LnD Hardware] Erro na API do Windows, usando string de segurança: {ex.Message}");
+            }
+#endif
+
+
+            // --- BLOCO EXCLUSIVO DO LINUX ---
+#if UNITY_EDITOR_LINUX
+            if (System.IO.File.Exists("/proc/cpuinfo"))
+            {
+                try
+                {
+                    string cpuInfo = System.IO.File.ReadAllText("/proc/cpuinfo").ToLower();
+                    
+                    if (cpuInfo.Contains("avx512"))
+                    {
+                        Debug.Log("<color=green>[LnD Hardware] Kernel Linux confirmou via cpuinfo: AVX-512 Suportado</color>");
+                        detectedHardware = LlamaCppHardwareBackend.CPU_AVX512;
+                        return;
+                    }
+                    if (cpuInfo.Contains("avx2"))
+                    {
+                        Debug.Log("<color=green>[LnD Hardware] Kernel Linux confirmou via cpuinfo: AVX2 Suportado</color>");
+                        detectedHardware = LlamaCppHardwareBackend.CPU_AVX2;
+                        return;
+                    }
+                    if (cpuInfo.Contains("avx"))
+                    {
+                        Debug.Log("<color=green>[LnD Hardware] Kernel Linux confirmou via cpuinfo: AVX Antigo Suportado</color>");
+                        detectedHardware = LlamaCppHardwareBackend.CPU_AVX;
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[LnD Hardware] Erro ao ler /proc/cpuinfo no Linux: {ex.Message}");
+                }
+            }
+#endif
+
+
+            // --- FALLBACK GENÉRICO SEGURO (Se rodar em outra plataforma ou se as APIs falharem) ---
+            // Removi a heurística perigosa baseada em string que causava o falso positivo no seu Ryzen 3700X.
+            // Se o código cair aqui, ele assume o perfil mais seguro compatível com a marca.
+            string cpuName = SystemInfo.processorType.ToLower();
+            
+            if (cpuName.Contains("ryzen") || cpuName.Contains("threadripper") || (cpuName.Contains("intel") && cpuName.Contains("core")))
+            {
+                // Praticamente todo Ryzen e todo Intel Core moderno (Haswell+) suportam AVX2.
+                Debug.Log("<color=yellow>[LnD Hardware] Fallback de segurança de String acionado -> Selecionando AVX2 por compatibilidade padrão</color>");
+                detectedHardware = LlamaCppHardwareBackend.CPU_AVX2;
+                return;
+            }
+
+            // Segurança máxima absoluta para hardware muito antigo
+            Debug.Log("<color=red>[LnD Hardware] CPU não identificada -> Selecionando CPU_AVX básico</color>");
+            detectedHardware = LlamaCppHardwareBackend.CPU_AVX;
         }
+
     }
 }

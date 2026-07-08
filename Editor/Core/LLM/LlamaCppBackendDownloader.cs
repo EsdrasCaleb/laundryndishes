@@ -32,7 +32,7 @@ namespace LaundryNDishes.Core
         private static string GetAbsoluteTargetFolder([CallerFilePath] string currentScriptPath = "")
         {
             string currentDir = Path.GetDirectoryName(currentScriptPath);
-            string targetDir = Path.GetFullPath(Path.Combine(currentDir, "../../ThirdParty/LlamaCore"));
+            string targetDir = Path.GetFullPath(Path.Combine(currentDir, "../../ThirdParty/LlamaCore/X64"));
             return targetDir.Replace("\\", "/");
         }
 
