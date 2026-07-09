@@ -188,7 +188,7 @@ namespace LaundryNDishes.UI
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("View Full Consent Form", GUILayout.Width(220), GUILayout.Height(25)))
             {
-                Application.OpenURL("https://esdrascaleb.github.io/surveyLnD/editor-rcle");
+                Application.OpenURL("https://esdrascaleb.github.io/surveyLnD/#/editor-rcle");
             }
             GUI.backgroundColor = originalBgColor;
             GUILayout.FlexibleSpace();
