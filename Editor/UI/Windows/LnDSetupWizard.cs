@@ -150,9 +150,11 @@ namespace LaundryNDishes.UI
             EditorGUILayout.Space(5);
 
             // --- INTRODUÇÃO ---
-            string introText = "This plugin is part of an academic research project conducted by the " +
-                               "Federal University of Rio Grande do Norte (UFRN), Brazil.\n\n" +
-                               "If you choose to participate, anonymous usage telemetry may be shared with the research team.";
+            string introText =
+                "This plugin is part of an academic research project conducted by the " +
+                "Federal University of Rio Grande do Norte (UFRN), Brazil.\n\n" +
+                "If you choose to participate, the plugin will begin recording anonymous telemetry related to its usage. " +
+                "These data may be shared with the research team only with your consent.";
             EditorGUILayout.LabelField(introText, textStyle);
 
             // --- SEÇÃO: COLLECTED INFORMATION ---
@@ -172,27 +174,64 @@ namespace LaundryNDishes.UI
                                        "• Personal information";
             EditorGUILayout.LabelField(neverCollectedText, textStyle);
             EditorGUILayout.Space(10);
+            
+            EditorGUILayout.LabelField("Potential risks", sectionHeaderStyle);
+
+            string risksText =
+                "• Local language models may temporarily increase CPU, GPU and memory usage.\n" +
+                "• On computers with insufficient resources or incompatible configurations, local inference may reduce performance or cause application instability.\n" +
+                "• These risks only apply when using locally executed language models.";
+
+            EditorGUILayout.LabelField(risksText, textStyle);
+            EditorGUILayout.Space(10);
 
             // --- TEXTO DE TELEMETRIA PADRÃO ---
             string footerText = "Telemetry sharing is disabled by default and participation is entirely voluntary. " +
-                                "You may enable or disable telemetry at any time.\n\n" +
-                                "Please read the complete Research Consent Form (RCLE) before making your decision.";
+                                "If you agree to participate, telemetry recording will begin and anonymous telemetry may be shared with the research team.\n\n"+
+                                "If you later withdraw your consent, telemetry recording and sharing will stop immediately. You may also request the deletion of previously shared data.\n\n" +
+                                "Please read the full Research Consent Form (RCLE) before making your decision.";
             EditorGUILayout.LabelField(footerText, textStyle);
             EditorGUILayout.Space(15);
             
             Color originalBgColor = GUI.backgroundColor;
             
             // --- BOTÃO: VIEW FULL CONSENT FORM ---
-            EditorGUILayout.BeginHorizontal();
+            
             GUI.backgroundColor = new Color(0.35f, 0.35f, 0.75f);
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("View Full Consent Form", GUILayout.Width(220), GUILayout.Height(25)))
+            
+            if (GUILayout.Button("Read the Full Research Consent Form (RCLE)", GUILayout.Width(260), GUILayout.Height(25)))
             {
                 Application.OpenURL("https://esdrascaleb.github.io/surveyLnD/#/editor-rcle");
             }
             GUI.backgroundColor = originalBgColor;
-            GUILayout.FlexibleSpace();
-            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(8);
+
+            GUIStyle consentStyle = new GUIStyle(EditorStyles.wordWrappedMiniLabel)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                richText = true
+            };
+
+            EditorGUILayout.LabelField(
+                "By selecting \"Participate in Research\", you confirm that you have read and understood the Research Consent Form (RCLE) and voluntarily consent to participate in this study.",
+                consentStyle,
+                GUILayout.Width(460)
+            );
+            
+            EditorGUILayout.Space(6);
+
+            GUIStyle noteStyle = new GUIStyle(EditorStyles.centeredGreyMiniLabel)
+            {
+                wordWrap = true
+            };
+
+            EditorGUILayout.LabelField(
+                "Your decision will not affect your ability to use the plugin.",
+                noteStyle,
+                GUILayout.Width(460)
+            );
+            
 
             EditorGUILayout.Space(25);
 
@@ -212,7 +251,7 @@ namespace LaundryNDishes.UI
                 GUI.backgroundColor = originalBgColor;
             }
 
-            if (GUILayout.Button("I AGREE", GUILayout.Width(150), GUILayout.Height(30)))
+            if (GUILayout.Button("Participate in Research", GUILayout.Width(180), GUILayout.Height(30)))
             {
                 decisionMade = true;
                 config.TelemetryEnabled = true;
@@ -232,7 +271,7 @@ namespace LaundryNDishes.UI
                 GUI.backgroundColor = originalBgColor;
             }
 
-            if (GUILayout.Button("I DECLINE", GUILayout.Width(150), GUILayout.Height(30)))
+            if (GUILayout.Button("Do Not Participate", GUILayout.Width(180), GUILayout.Height(30)))
             {
                 decisionMade = true;
                 config.TelemetryEnabled = false;

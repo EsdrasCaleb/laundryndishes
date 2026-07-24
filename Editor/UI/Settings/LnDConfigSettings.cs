@@ -61,7 +61,7 @@ namespace LaundryNDishes.UI
             bool previous = config.TelemetryEnabled;
 
             bool current = EditorGUILayout.Toggle(
-                "Send anonymised telemetry usage data",
+                "Share anonymised telemetry for research",
                 previous
             );
 
@@ -73,6 +73,10 @@ namespace LaundryNDishes.UI
             GUI.enabled = false;
             EditorGUILayout.TextField("Installation ID", LnDConfig.instance.InstallationId);
             GUI.enabled = true;
+            EditorGUILayout.HelpBox(
+                "Telemetry data is stored locally in this file. You may inspect or delete it manually at any time.",
+                MessageType.Info
+            );
             EditorGUILayout.Space(10);
             
             // --------------------------------------------------------------------------
